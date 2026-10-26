@@ -6,7 +6,7 @@ import {database,Client} from './db-helper.mjs';
 import worker from '../src/worker.mjs';
 import {demoTournament} from '../src/domain.mjs';
 import {validCapability,managementDigest} from '../src/access.mjs';
-const actions=['amendRoster','register','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings'];
+const actions=['amendRoster','reshuffle','register','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings'];
 test('creation issues secure browser ownership and stores only hashed capabilities',async()=>{
  const {db,env}=database();try{const a=new Client(env);const response=await a.request('/api/tournaments',{name:'A'});assert.equal(response.status,201);const created=await response.json();assert.ok(validCapability(created.managementKey),'management capability must have 256 bits');const cookie=response.headers.get('Set-Cookie')??'';for(const flag of ['__Host-svoyak-owner=','Path=/','HttpOnly','SameSite=Strict','Secure','Max-Age='])assert.ok(cookie.includes(flag),'required cookie flag missing');assert.ok(!cookie.includes('Domain='));assert.equal(created.tournament.canEdit,true);
  const row=db.prepare('SELECT management_key_hash,payload FROM tournaments WHERE id=?').get(created.tournament.id);assert.ok(row.management_key_hash!==created.managementKey);assert.ok(row.management_key_hash===await managementDigest(created.tournament.id,created.managementKey));assert.ok(!row.payload.includes(created.managementKey));assert.ok(!JSON.stringify(db.prepare('SELECT * FROM tournament_owner_sessions').all()).includes(a.cookie.split('=')[1]));

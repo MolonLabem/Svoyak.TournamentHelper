@@ -96,6 +96,24 @@ export function swapImpact(t,{a,b,round=t.rounds.length}) {
   const games=[...new Set([ga,gb])];return {round:r.number,games:games.map(g=>g.id),savedGames:games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
 }
 export function correctionImpact(t,round){const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');return {round:r.number,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};}
+export function reshuffleImpact(t,round=1) {
+  const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');
+  if(r.number!==1)fail('Случайная жеребьёвка доступна только в первом круге; в следующих действует швейцарская система.');
+  return {round:r.number,savedGames:r.games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
+}
+function reshuffledRound(r,randomSeed) {
+  const original=r.games.flatMap(g=>g.players),random=rng(randomSeed),sizes=r.games.map(g=>g.players.length);
+  let order;
+  const signature=groups=>groups.map(ids=>[...ids].sort().join(',')).sort().join('|'),previous=signature(r.games.map(g=>g.players));
+  const changed=ids=>{if(r.games.length===1)return ids.some((id,i)=>id!==original[i]);let offset=0;return signature(sizes.map(n=>ids.slice(offset,offset+=n)))!==previous;};
+  // A reroll must change the actual groups, rather than only reorder seats.
+  for(let attempt=0;attempt<32;attempt++){
+    order=[...original];for(let i=order.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+    if(changed(order))break;
+  }
+  if(!changed(order)){order=[...original];const j=sizes.length>1?sizes[0]:1;[order[0],order[j]]=[order[j],order[0]];}
+  return {...r,randomSeed,roster:[...(r.roster??original)],games:r.games.map(g=>({...g,players:order.splice(0,g.players.length),scores:null}))};
+}
 function amendRoster(t,action,randomSeed) {
   if(t.archived||t.finished)fail('Сначала откройте турнир для редактирования.');
   if(t.finals.length)fail('Сначала отмените финалы в настройках; результаты кругов сохранятся.');
@@ -157,6 +175,12 @@ export function applyAction(original, action, randomSeed = 1) {
     }
     case 'remove': rosterOpen(); t.players=t.players.filter(p=>p.id!==action.id); break;
     case 'draw': t.rounds.push(pair(t, randomSeed)); eventDetails.generatedRound=clone(t.rounds.at(-1)); break;
+    case 'reshuffle': {
+      const impact=reshuffleImpact(t,action.round);
+      if(action.confirm!==true)fail('Подтвердите повторную жеребьёвку и сброс результатов этого круга.');
+      const r=t.rounds.find(r=>r.number===impact.round);eventDetails.previousRound=clone(r);
+      resetFollowing(t,r.number,eventDetails);const generated=reshuffledRound(r,randomSeed);t.rounds[t.rounds.length-1]=generated;eventDetails.generatedRound=clone(generated);break;
+    }
     case 'results': {
       const ri = t.rounds.findIndex(r=>r.number===action.round);
       if (ri < 0) fail('Круг не найден.');

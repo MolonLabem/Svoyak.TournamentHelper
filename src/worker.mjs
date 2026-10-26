@@ -45,7 +45,7 @@ export function validateBackup(input) {
   if(fresh.finished&&(!fresh.finals.length||fresh.finals.some(g=>!g.places)))bad('Завершённый турнир должен иметь результаты финалов.');
   // Do not trust executable or extra object properties from imported files.
   if(!Array.isArray(t.history)||t.history.length>10000)bad('Слишком большая или некорректная история.');
-  const validTypes=new Set(['register','amendRoster','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings']);
+  const validTypes=new Set(['register','amendRoster','reshuffle','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings']);
   fresh.history=t.history.map(h=>{
     if(!h||!validTypes.has(h.type)||typeof h.at!=='string'||!Number.isFinite(Date.parse(h.at))||!h.details||typeof h.details!=='object'||h.details.type!==h.type)bad('Повреждён журнал изменений.');
     const d=h.details;
@@ -124,7 +124,7 @@ export async function handleApi(request,env){
  if(match&&!match[2]){
   if(!Number.isInteger(body.revision)||body.revision!==row.revision)return json({error:'Турнир изменён в другой вкладке.'},409);
   if(!body.action||typeof body.action.type!=='string')bad('Некорректное действие.');
-  const actionFields={register:['names'],amendRoster:['names','removeIds','restoreIds','scope','confirm'],rename:['id','name'],remove:['id'],draw:[],results:['round','game','scores','confirm','resetFollowing'],swap:['a','b','round','confirm'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','places','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location','scoreDivisor','confirm']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
+  const actionFields={register:['names'],amendRoster:['names','removeIds','restoreIds','scope','confirm'],rename:['id','name'],remove:['id'],draw:[],reshuffle:['round','confirm'],results:['round','game','scores','confirm','resetFollowing'],swap:['a','b','round','confirm'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','places','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location','scoreDivisor','confirm']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
   const t=applyAction(JSON.parse(row.payload),action,crypto.getRandomValues(new Uint32Array(1))[0]);
   const result=await env.DB.prepare('UPDATE tournaments SET payload=?,revision=?,updated_at=? WHERE id=? AND revision=?').bind(JSON.stringify(t),t.revision,new Date().toISOString(),t.id,row.revision).run();
   if(result.meta.changes!==1)return json({error:'Турнир изменён в другой вкладке.'},409);

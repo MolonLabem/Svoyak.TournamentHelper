@@ -75,3 +75,9 @@ Owner-only red × controls on dashboard cards and in settings open a short gener
 Dark desktop export and mobile correction screens, plus light mobile export, were visually inspected. Mobile toolbar spacing was reduced to retain both swap and next-round actions without excessive space; the first game begins at469.69px for the tested organizer page. Measured text contrast remains7.40:1–14.51:1 and no horizontal page overflow occurs. Original raw score export does not depend on the selected divisor.
 
 Hosted verification uses the same synthetic-only script with APP_URL and RUN_HOSTED_QA=1; deployment/live results are reported separately in the task after publication. No capability, cookie or Sites service credential is emitted by the suite.
+
+## First-round reshuffle
+
+53 automated tests pass. Five new reshuffle cases include720 seeded/count combinations (3/4/6/7/8/9/14/37/40 players ×80 seeds), verifying actual changed opponent partitions, every player exactly once, fixed game sizes/IDs, seed reproducibility and atomic confirmation. Other cases cover score/dependent-round/finals resets with audit snapshots, current-round versus future roster preservation, Swiss-round/finished/archive rejection, backup compatibility, server ownership/origin checks and revision conflicts.
+
+Six local Chromium scenarios passed with zero browser errors: keyboard/focus/Cancel; one mutation for repeated submit; reload persistence; dirty-entry blocking; exact scored-round reset warning; dark/light desktop and320/390px mobile; score/standings cleanup; private backup retention; public/other-owner denials; stale-confirmation rejection and fresh retry. Both synthetic records from the successful run were deleted, and no real records were touched. Mobile confirmation and toolbar screenshots were visually inspected. Hosted verification runs the same synthetic-only script after deployment and is reported in the task.
