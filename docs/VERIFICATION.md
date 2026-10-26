@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-- Workbook domain unchanged: three Swiss rounds, 3/4-player groups, average ranks on ties, exact score units, weighted 1000/2000 repeat penalties, manual finals and explicit rollback.
+- Workbook defaults preserved: three Swiss rounds, 3/4-player groups, average ranks on ties, exact comparisons, weighted 1000/2000 repeat penalties and manual finals. User-approved late roster/correction and custom-divisor extensions are documented below.
 - Account-free ownership: browser session plus per-tournament private management key; only hashes in D1. Public result links never grant edits. Recovery is explicit, fragment-based and cleans its URL. Owner cookies are Secure/HttpOnly/SameSite=Strict in production.
 - No public tournament directory, audit/private notes, seeds, internal revision fields, full backups or management secrets in spectator responses. Backups, restore, rollback and key replacement require the matching tournament session.
 - Existing rows are preserved without automatic ownership assignment. Only three archived synthetic QA records existed when the live database was inspected; these remain hidden and unclaimable.
@@ -10,7 +10,7 @@
 
 ## Automated and local browser checks
 
-`npm test`: 31 passing tests covering source formula fixtures (12/16/24 players), every supported participant partition, tied/negative/decimal scores, deterministic later rounds, incomplete progression, corrections/rollback/finals, SQLite restart recovery and revision conflicts. Security tests cover hashed storage, production cookie flags, distinct owners, anonymous denials, private backup/restore, CSRF, session fixation, forged identity/owner fields, recovery binding, replacement/revocation, legacy non-claiming and the emitted Worker artifact.
+Previous release baseline: 31 passing tests covering source formula fixtures (12/16/24 players), every supported participant partition, tied/negative/decimal scores, deterministic later rounds, incomplete progression, corrections/rollback/finals, SQLite restart recovery and revision conflicts. Security tests cover hashed storage, production cookie flags, distinct owners, anonymous denials, private backup/restore, CSRF, session fixation, forged identity/owner fields, recovery binding, replacement/revocation, legacy non-claiming and the emitted Worker artifact.
 
 The 15-scenario real Chromium workflow regression passes: theme persistence/system changes, modal focus, repeated submit, duplicate registration, tie preview versus saved data, Cancel/Back, interrupted-reload drafts, missing-game focus, downstream rollback, read-only refresh, failed-save retry, final capacity/keyboard entry, both-theme text contrast, CSV/JSON recovery, archive separation and mobile overflow. No uncaught browser errors.
 
@@ -40,19 +40,19 @@ Nine real hosted Chromium checks passed, with zero uncaught browser errors:
 8. Replacing the app management key invalidated the old key and other sessions for that tournament, preserving access to unrelated tournaments.
 9. The deployed dark mobile spectator layout had no page overflow or JavaScript errors.
 
-The three new synthetic QA records were archived and then returned 404 to anonymous viewers. No real records were changed. The three pre-ownership archived QA records were preserved, kept unowned and stayed private. Native database inspection confirmed the new ownership-session table and nullable hash column. The pure scoring/pairing domain file remains unchanged from the previously verified release.
+The three new synthetic QA records were archived and then returned 404 to anonymous viewers. No real records were changed. The three pre-ownership archived QA records were preserved, kept unowned and stayed private. Native database inspection confirmed the new ownership-session table and nullable hash column. That release retained the original scoring/pairing file; the later organizer extensions below now extend it while preserving default workbook fixtures.
 
 Private management links, keys and cookie values were neither printed nor included in screenshots, source, reports or backups. Source publication used the separately approved short-lived repository credential; the Sites bypass token was not rotated again.
 
 ## Limits
 
-Excel/VBA was inspected statically, never executed. Reference outputs are exact-arithmetic translations of identified formulas. The original first-round random generator differs; score precision is two decimal places; incomplete games and unsafe progression are deliberately blocked. There are no invented byes/withdrawals or extra formats. Original workbook/VBA redistribution rights and the repository owner's legal identity remain unverified; originals are excluded, and PolyForm/attribution notices are retained.
+Excel/VBA was inspected statically, never executed. Reference outputs are exact-arithmetic translations of identified formulas. The original first-round random generator differs; score precision is two decimal places; incomplete games and unsafe progression are deliberately blocked. There are no automatic byes or compensation points; explicit late roster amendments are a requested extension. Original workbook/VBA redistribution rights and the repository owner's legal identity remain unverified; originals are excluded, and PolyForm/attribution notices are retained.
 
 Without both the browser cookie and its private management link, editing access cannot be automatically recovered. Restoring a JSON backup requires ownership of its existing source record; backups do not carry management credentials.
 
 ## Group-size preview and buzzer mark
 
-Setup now previews exact game counts/sizes beside the start action using the existing `groupSizes` domain function; invalid counts disable it and explain the required adjustment. The short confirmation only protects lineup locking. Browser checks cover 0/1/2/5 invalid counts; 3/4/6/7/9/14/37/40 valid counts; preview equals the generated first-round groups; roster removal refreshes the preview, and pending uncommitted selections disable start. A new transparent, text-free SVG buzzer is used in the header and favicon and was rendered at small mobile sizes in both themes. The user-approved Sites slug change completed once, from svoyak-tournament-dg to svoyak, preserving the exact Site ID, public access and database. Owner cookies are hostname-bound; saved management keys are tournament-bound and can restore ownership on the new hostname.
+Setup now previews exact game counts/sizes beside the start action using the existing `groupSizes` domain function; invalid counts disable it and explain the required adjustment. The short confirmation starts the draw; it now explains the lineup can be corrected later. Browser checks cover 0/1/2/5 invalid counts; 3/4/6/7/9/14/37/40 valid counts; preview equals the generated first-round groups; roster removal refreshes the preview, and pending uncommitted selections disable start. A new transparent, text-free SVG buzzer is used in the header and favicon and was rendered at small mobile sizes in both themes. The user-approved Sites slug change completed once, from svoyak-tournament-dg to svoyak, preserving the exact Site ID, public access and database. Owner cookies are hostname-bound; saved management keys are tournament-bound and can restore ownership on the new hostname.
 
 ## Native popup and visible-action correction
 
@@ -65,3 +65,13 @@ The logo follows the user's buzzer example: a large circular green front face, s
 Owner-only red × controls on dashboard cards and in settings open a short generic confirmation, without a name field, with Cancel focused. POST /api/tournaments/:id/delete requires the matching owner session, same-origin JSON, explicit confirmation and a current revision. Conditional session cleanup and tournament removal run in one D1 transaction; no schema migration is needed. All device grants and the management key disappear with the record. Other tournaments remain untouched. Archived/completed tournaments can also be deleted. Deletion is permanent and prevents restoration from a backup of that source, which the dialog states explicitly.
 
 35 automated tests pass, including four deletion cases: denied unauthorized/forged/stale requests, complete archived-tournament removal across devices, a concurrent edit preserving every binding, and rollback after a transaction failure. Ten local browser scenarios pass: owner-only visibility, dashboard controls without opening a tournament, settings confirmation without name entry and Cancel/Escape focus, stale confirmation, failed request and repeated-submit retry, list/reload cleanup, invalidated links with unrelated access preserved, Back/reload without resurrection, stale dashboard refresh without an active tournament, and keyboard deletion from an archived card. Mobile confirmation screenshots were visually inspected in both themes. Test fixtures are synthetic and removed after the run.
+
+## Denis feedback implementation — 2026-10-26
+
+48 automated tests pass, including 13 new custom-divisor/organizer cases. Default100 workbook fixtures for12/16/24 players still pass. Arbitrary-divisor tests cover1/200/300/333/9999/10000, exact cumulative ties, matching100/200 equivalent games, zeros, decimal negatives, dependent-round resets and raw-score export parity. Roster tests cover late current/future registration, withdrawal/return using stable IDs, preservation of played games, invalid residual group sizes, round-specific backup validation and server-side owner isolation.
+
+39 local Chromium scenarios pass across the organizer-feedback(10), workflow regression(15), Sheets-flow(7) and open-control(7) suites, with no uncaught browser errors. The feedback journey creates a200-divisor tournament, edits the roster after partial play, corrects historical scores, swaps scored groups, saves333/reloads, cancels/confirms a later divisor reset, downloads the fictitious example and checks actual raw-score clipboard output, restores a copy, rejects viewer/other-owner mutations and recovers ownership in another browser. All3 synthetic records from that feedback run were permanently removed by their creator; no real record was touched.
+
+Dark desktop export and mobile correction screens, plus light mobile export, were visually inspected. Mobile toolbar spacing was reduced to retain both swap and next-round actions without excessive space; the first game begins at469.69px for the tested organizer page. Measured text contrast remains7.40:1–14.51:1 and no horizontal page overflow occurs. Original raw score export does not depend on the selected divisor.
+
+Hosted verification uses the same synthetic-only script with APP_URL and RUN_HOSTED_QA=1; deployment/live results are reported separately in the task after publication. No capability, cookie or Sites service credential is emitted by the suite.

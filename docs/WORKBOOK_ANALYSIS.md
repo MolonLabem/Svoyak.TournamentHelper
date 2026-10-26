@@ -52,7 +52,7 @@ Examples independently translated from these formulas:
 
 **Incomplete games:** Excel can assign provisional ranks to just the nonblank scores, and SUMIFS then propagates these. A later entered score can change earlier players’ computed places. The app instead commits each game atomically only after all scores are valid. Provisional input never affects standings or the next draw. This is an intentional correctness safeguard.
 
-Persisted raw scores use integer hundredths, and points integer ten-thousandths. Average ranks for groups of 3/4 are exact halves. Pairing distances use integer millionths: `pointsUnits × 100 − registrationSeed`. Inputs have at most two decimal places, bounded to ±999999.99. This is a documented finite precision improvement over unconstrained Excel floating-point cells.
+Persisted raw scores use integer hundredths. At the default divisor 100, points use integer ten-thousandths. Average ranks for groups of 3/4 are exact halves. Pairing distances use integer millionths: `pointsUnits × 100 − registrationSeed`. Inputs have at most two decimal places, bounded to ±999999.99. This is a documented finite precision improvement over unconstrained Excel floating-point cells.
 
 ## Exact later-round group assignment
 
@@ -88,13 +88,13 @@ with no final bonus when final position is absent. The app reproduces this numer
 | Excel workflow | Web equivalent / decision |
 |---|---|
 | Yellow registration cells | Individual or bulk unique-name entry, one-column text/CSV import, name search and pre-start removal. |
-| Round 1 button | Explicit confirmed draw, fixed roster, stored randomness seed. |
+| Round 1 button | Explicit confirmed draw and stored randomness seed. Later roster amendments are explicit user-requested extensions, described below. |
 | Round 2/3 buttons | Atomic deterministic draw only after all preceding scores are recorded. |
 | Raw score cells | Inline per-game keyboard entry, validation, confirmation to replace a recorded result. |
 | Formula places/points | Independent exact-arithmetic domain functions with no editable derived fields. |
 | Current standings | Shared Swiss ranks, per-round points, cumulative score and manual final place; display sorting. |
-| Manual editing group names | Explicit pairwise swap before any current-round result; repeated meetings remain visible. |
-| Editing old score with later groups already present | App locks old results; organizer explicitly discards subsequent rounds/finals first. The audit trail retains original actions/results. No silent re-pairing. |
+| Manual editing group names | Explicit pairwise swap in any round; resets affected game scores and dependent rounds/finals after showing impact. Unaffected same-round scores remain. |
+| Editing old score with later groups already present | Correction dialog shows dependent rounds/finals, then atomically discards them with the confirmed score correction. Audit snapshots retain discarded data. No silent re-pairing. |
 | Manual finalist cells | Manual participant selection and manual final places/scores. |
 | Workbook save/resume | Hosted D1 with atomic revision checks, local SQLite development adapter, archive/reopen workflows and validated JSON backup/restore as a separate tournament. |
 | General Excel printing | Print styles for games or standings, CSV export and JSON backup. No source-specific report/export macro or configured print area exists to replicate. |
@@ -103,7 +103,7 @@ with no final bonus when final position is absent. The app reproduces this numer
 
 - The original workbook is a template, so cached outputs cannot validate nonempty scenarios. Fixtures are independently calculated translations of identified formulas using rational arithmetic, not a claim that Excel was executed.
 - Source formulas assume contiguous unique registrations and completed earlier rounds. Names are fragile primary keys; the app uses IDs and rejects duplicates case-insensitively and after whitespace/Unicode normalization.
-- N=1,2,5 invalid partitions, incomplete progression and overwrites are blocked. There is no invented bye or withdrawal rule.
+- N=1,2,5 invalid partitions, incomplete progression and overwrites are blocked. There is no automatic bye or compensation rule; the user-requested withdrawal extension is explicit below.
 - Original RAND duplicate ranks are theoretically possible; the app’s permutation guarantees one occurrence per player.
 - Empty/invalid final values in Excel can produce ambiguous ordering. The app accepts selected existing IDs and validated manually assigned places only.
 - The original contains no archive, audit log, backup or optimistic concurrency system; these are persistence/integrity additions within the requested workflow.
@@ -113,3 +113,11 @@ with no final bonus when final position is absent. The app reproduces this numer
 ## Copyright
 
 The source was provided for behavioral analysis; no redistribution permission for its contents or VBA was established. Neither the workbook nor extracted macros are committed, served, or included in the deployment archive. Attribution is preserved. The independent code’s Required Notice uses the supplied repository owner handle `MolonLabem`; legal identity and chain of title remain unverified. The official PolyForm license text is included unmodified, with notices outside it.
+
+## User-approved organizer extensions (2026-10-26)
+
+Denis feedback explicitly authorized editing players, groups and scores after start and any custom divisor. The default divisor remains 100; positive integer settings 1–10000 scale only the raw-score term, preserving average place points. Arbitrary-divisor comparisons and pairing use a common integer numerator: per-game `(4-place)*d*200 + rawHundredths*2`, seed-adjusted pairing key `sumNumerators*5000 - seed*d`, and weighted repeat penalties multiplied by d. This is the same distance scaled by a common factor, avoiding rounding-induced ties. Display points may be fractional ten-thousandths; they are never fed back into comparison keys. Sheet Data exports remain raw scores.
+
+Each round stores its own roster. Late additions/withdrawals/returns can affect only future draws or regenerate only current unplayed games, using the existing pairing algorithm on the remaining pool. Completed games are immutable in this roster operation; withdrawn players retain historical points and IDs. Missed games have no score/compensation. Invalid residual sizes are rejected atomically. At most 40 players per round and 120 identities overall are accepted. Finals must first be cancelled and finished/archived tournaments reopened for roster edits.
+
+Saved-game swaps explicitly clear only affected games. Historical score/group corrections atomically remove dependent rounds/finals, keeping other scores in the edited round. Changing divisor when later rounds exist requires confirmation and retains first-round raw scores only. Prior snapshots are owner-only audit data. These are application extensions, not behavior inferred from Excel.

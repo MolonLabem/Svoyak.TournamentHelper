@@ -15,41 +15,45 @@ export function scoreValue(value) {
   const [whole, fraction = ''] = text.replace('-', '').split('.');
   return (Number(whole) * 100 + Number(fraction.padEnd(2, '0'))) * (negative ? -1 : 1);
 }
-export function gameResult(game) {
+export const activePlayers = t => t.players.filter(p=>p.active!==false);
+export function scoringDivisor(input=100) {
+  const value=input&&typeof input==='object'?input.scoreDivisor:input;
+  if(value===undefined)return 100;
+  if(!['number','string'].includes(typeof value)||(typeof value==='string'&&!/^\d{1,5}$/.test(value)))fail('Делитель счёта — целое число от 1 до 10000.');
+  const n=Number(value);if(!Number.isInteger(n)||n<1||n>10000)fail('Делитель счёта — целое число от 1 до 10000.');return n;
+}
+export function gameResult(game, divisor=100) {
   if (!game.scores || game.scores.length !== game.players.length || game.scores.some(x => !Number.isInteger(x))) return null;
+  const d=scoringDivisor(divisor);
   return game.scores.map(raw => {
     const above = game.scores.filter(x => x > raw).length;
     const equal = game.scores.filter(x => x === raw).length;
     const place = 1 + above + (equal - 1) / 2;
-    return {place, points: (4 - place) * 10000 + raw};
+    return {place, points: ((4-place)*d*200+raw*2)*50/d};
   });
 }
 export const roundComplete = round => Boolean(round?.games.length && round.games.every(g => gameResult(g)));
 export function standings(t, before = t.rounds.length) {
+  const d=scoringDivisor(t);
   const rows = t.players.map(p => {
-    const rounds = t.rounds.slice(0, before).map(r => {
-      const g = r.games.find(g => g.players.includes(p.id));
-      return g ? gameResult(g)?.[g.players.indexOf(p.id)]?.points ?? null : null;
-    });
-    const total = rounds.reduce((a,b) => a + (b ?? 0), 0);
-    const final = (t.finals ?? []).flatMap((g,i) => g.players.map((id,j) => ({id, place: g.places?.[j] ? g.places[j] + i * 4 : null}))).find(f => f.id === p.id)?.place ?? null;
-    return {...p, rounds, total, final, key: total * 100 - p.seed + (final ? (9 - final) * 1000000000 : 0)};
+    const numerators=t.rounds.slice(0,before).map(r=>{const g=r.games.find(g=>g.players.includes(p.id));if(!g)return null;const result=gameResult(g,d),i=g.players.indexOf(p.id);return result?(4-result[i].place)*d*200+g.scores[i]*2:null;});
+    const scoreNumerator=numerators.reduce((sum,n)=>sum+(n??0),0),rounds=numerators.map(n=>n==null?null:n*50/d),total=scoreNumerator*50/d;
+    const final=(t.finals??[]).flatMap((g,i)=>g.players.map((id,j)=>({id,place:g.places?.[j]?g.places[j]+i*4:null}))).find(f=>f.id===p.id)?.place??null;
+    // Common integer numerator keeps ties, seed epsilon and pairing exact for any divisor.
+    const pairKey=scoreNumerator*5000-p.seed*d,sortKey=pairKey+(final?(9-final)*1000000000*d:0);
+    return {...p,rounds,total,final,scoreNumerator,pairKey,sortKey,key:sortKey/d};
   });
-  const swiss = [...rows].sort((a,b) => b.total - a.total || a.seed - b.seed);
-  rows.forEach(p => {
-    const first = swiss.findIndex(r => r.total === p.total) + 1;
-    const last = first + swiss.filter(r => r.total === p.total).length - 1;
-    p.rank = first === last ? String(first) : `${first}–${last}`;
-  });
-  return rows.sort((a,b) => b.key - a.key || a.seed - b.seed);
+  const swiss=[...rows].sort((a,b)=>b.scoreNumerator-a.scoreNumerator||a.seed-b.seed);
+  for(const p of rows){const first=swiss.findIndex(r=>r.scoreNumerator===p.scoreNumerator)+1,last=first+swiss.filter(r=>r.scoreNumerator===p.scoreNumerator).length-1;p.rank=first===last?String(first):`${first}–${last}`;}
+  return rows.sort((a,b)=>b.sortKey-a.sortKey||a.seed-b.seed);
 }
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let r = Math.imul(seed ^ seed >>> 15, 1 | seed); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
 export function pair(t, randomSeed = 1) {
-  const sizes = groupSizes(t.players.length);
+  const sizes = groupSizes(activePlayers(t).length);
   const n = t.rounds.length;
   if (n >= 3) fail('Три круга уже сыграны. Перейдите к финалам.');
   if (n && !roundComplete(t.rounds.at(-1))) fail('Сначала внесите результаты всех боёв текущего круга.');
-  let remaining = t.players.map(p => p.id);
+  let remaining = activePlayers(t).map(p => p.id);
   const groups = [];
   if (!n) {
     const random = rng(randomSeed);
@@ -57,8 +61,8 @@ export function pair(t, randomSeed = 1) {
     for (const size of sizes) groups.push(remaining.splice(0, size));
   } else {
     const rows = standings(t, n);
-    const adjusted = id => { const p = rows.find(p => p.id === id); return p.total * 100 - p.seed; };
-    const penalty = (a,b) => t.rounds.reduce((sum,r,i) => sum + (r.games.some(g => g.players.includes(a) && g.players.includes(b)) ? (i + 1) * 1000000000 : 0),0);
+    const adjusted = id => rows.find(p=>p.id===id).pairKey;
+    const penalty = (a,b) => t.rounds.reduce((sum,r,i) => sum + (r.games.some(g => g.players.includes(a) && g.players.includes(b)) ? (i + 1) * 1000000000 * scoringDivisor(t) : 0),0);
     const distance = (a,b) => Math.abs(adjusted(a) - adjusted(b)) + penalty(a,b);
     for (const size of sizes) {
       remaining.sort((a,b) => adjusted(b) - adjusted(a));
@@ -71,7 +75,7 @@ export function pair(t, randomSeed = 1) {
       groups.push(group);
     }
   }
-  return {number: n+1, randomSeed: n ? null : randomSeed, games: groups.map((players,i) => ({id:`r${n+1}g${i+1}`,players,scores:null}))};
+  return {number: n+1, randomSeed: n ? null : randomSeed, roster:activePlayers(t).map(p=>p.id), games: groups.map((players,i) => ({id:`r${n+1}g${i+1}`,players,scores:null}))};
 }
 function cleanName(s) {
   if (typeof s !== 'string') fail('Введите имя.');
@@ -80,11 +84,49 @@ function cleanName(s) {
   return name;
 }
 const norm = s => s.normalize('NFKC').toLocaleLowerCase('ru');
-export function createTournament({id, name, date = '', location = '', demo = false}) {
+export function createTournament({id, name, date = '', location = '', demo = false, scoreDivisor = 100}) {
   const title = cleanName(name);
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) fail('Проверьте дату турнира.');
-  return {id,name:title,date,location:String(location).slice(0,150),players:[],rounds:[],finals:[],history:[],archived:false,finished:false,demo,revision:0};
+  return {id,name:title,date,scoreDivisor:scoringDivisor(scoreDivisor),location:String(location).slice(0,150),players:[],rounds:[],finals:[],history:[],archived:false,finished:false,demo,revision:0};
 }
+export function swapImpact(t,{a,b,round=t.rounds.length}) {
+  const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');
+  const ga=r.games.find(g=>g.players.includes(a)),gb=r.games.find(g=>g.players.includes(b));
+  if(a===b||!ga||!gb)fail('Выберите двух разных игроков.');
+  const games=[...new Set([ga,gb])];return {round:r.number,games:games.map(g=>g.id),savedGames:games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
+}
+export function correctionImpact(t,round){const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');return {round:r.number,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};}
+function amendRoster(t,action,randomSeed) {
+  if(t.archived||t.finished)fail('Сначала откройте турнир для редактирования.');
+  if(t.finals.length)fail('Сначала отмените финалы в настройках; результаты кругов сохранятся.');
+  if(!['current','next'].includes(action.scope))fail('Выберите, с какого момента менять состав.');
+  const names=(action.names??[]),removeIds=(action.removeIds??[]),restoreIds=(action.restoreIds??[]);
+  if(![names,removeIds,restoreIds].every(Array.isArray)||names.length+removeIds.length+restoreIds.length===0)fail('Выберите изменения состава.');
+  if(new Set([...removeIds,...restoreIds]).size!==removeIds.length+restoreIds.length)fail('Игрок указан в изменениях дважды.');
+  const cleaned=names.map(cleanName);if(new Set(cleaned.map(norm)).size!==cleaned.length)fail('Имена игроков должны быть уникальными.');
+  for(const r of t.rounds)r.roster??=[...new Set(r.games.flatMap(g=>g.players))];
+  for(const id of removeIds){const p=t.players.find(p=>p.id===id);if(!p||p.active===false)fail('Игрок не участвует в текущем составе.');p.active=false;}
+  for(const id of restoreIds){const p=t.players.find(p=>p.id===id);if(!p||p.active!==false)fail('Игрок уже участвует или не найден.');p.active=true;}
+  let seed=t.players.reduce((max,p)=>Math.max(max,p.seed),0);
+  for(const name of cleaned){const previous=t.players.find(p=>norm(p.name)===norm(name));if(previous){if(previous.active!==false)fail('Такое имя уже участвует.');previous.active=true;}else{seed++;t.players.push({id:`p${seed}`,seed,name,active:true});}}
+  if(activePlayers(t).length>40)fail('В одном круге может участвовать не больше 40 игроков.');
+  if(t.players.length>120)fail('В турнире может быть не больше 120 разных участников за три круга.');
+  const r=t.rounds.at(-1);let preservedGames=r?.games.filter(g=>g.scores).length??0,rebuiltGames=0,newSizes=[];
+  if(r&&action.scope==='current'){
+    const fixed=r.games.filter(g=>g.scores),fixedIds=new Set(fixed.flatMap(g=>g.players)),pool=activePlayers(t).filter(p=>!fixedIds.has(p.id));
+    if(fixedIds.size+pool.length>40)fail('С учётом уже сыгравших в этом круге будет больше 40 игроков. Примените изменение со следующего круга.');
+    if(!pool.length&&!fixed.length)fail('Для текущего круга нужно минимум 3 игрока.');
+    if(pool.length){try{newSizes=groupSizes(pool.length);}catch{fail(`В несыгранных боях останется ${pool.length} игроков: их нельзя разделить на бои по 3–4. Измените состав или примените со следующего круга.`);}}
+    const draft={...t,players:pool,rounds:t.rounds.slice(0,-1),finals:[]};
+    const generated=pool.length?pair(draft,r.randomSeed??randomSeed).games:[],oldPending=r.games.filter(g=>!g.scores);
+    let serial=Math.max(0,...r.games.map(g=>Number(g.id.match(/g(\d+)$/)?.[1]??0)));
+    generated.forEach((g,i)=>g.id=oldPending[i]?.id??`r${r.number}g${++serial}`);
+    let i=0;rebuiltGames=oldPending.length;r.games=r.games.flatMap(g=>g.scores?[g]:i<generated.length?[generated[i++]]:[]);r.games.push(...generated.slice(i));r.roster=[...new Set(r.games.flatMap(g=>g.players))];
+  }
+  return {round:r?.number??0,scope:action.scope,preservedGames,rebuiltGames,newSizes,activeCount:activePlayers(t).length};
+}
+export function rosterChangePreview(t,action){return amendRoster(clone(t),action,1);}
+function resetFollowing(t,round,eventDetails){eventDetails.discardedRounds=clone(t.rounds.filter(r=>r.number>round));eventDetails.discardedFinals=clone(t.finals);t.rounds=t.rounds.filter(r=>r.number<=round);t.finals=[];t.finished=false;}
 export function applyAction(original, action, randomSeed = 1) {
   const t = clone(original);
   const eventDetails=clone(action);
@@ -96,12 +138,16 @@ export function applyAction(original, action, randomSeed = 1) {
       rosterOpen();
       if (!Array.isArray(action.names) || !action.names.length) fail('Введите имена игроков, по одному в строке.');
       const names = action.names.map(cleanName);
-      if (t.players.length + names.length > 40) fail('Максимум 40 игроков.');
+      if (activePlayers(t).length + names.length > 40) fail('Максимум 40 игроков.');
       const all = [...t.players.map(p=>norm(p.name)),...names.map(norm)];
       if (new Set(all).size !== all.length) fail('Имена игроков должны быть уникальными. Ничего не добавлено.');
       let seed = t.players.reduce((max,p)=>Math.max(max,p.seed),0);
       names.forEach(name => { seed++; t.players.push({id:`p${seed}`,seed,name}); });
       break;
+    }
+    case 'amendRoster': {
+      if(action.confirm!==true)fail('Подтвердите изменение состава.');
+      eventDetails.previousRound=clone(t.rounds.at(-1)??null);eventDetails.previousPlayers=clone(t.players);eventDetails.impact=amendRoster(t,action,randomSeed);break;
     }
     case 'rename': {
       const p = t.players.find(p=>p.id===action.id); if (!p) fail('Игрок не найден.');
@@ -114,18 +160,18 @@ export function applyAction(original, action, randomSeed = 1) {
     case 'results': {
       const ri = t.rounds.findIndex(r=>r.number===action.round);
       if (ri < 0) fail('Круг не найден.');
-      if (ri !== t.rounds.length-1 || t.finals.length) fail('Уже сформированы следующие игры. Сначала явно отмените последующие круги и финалы.');
+      if ((ri !== t.rounds.length-1 || t.finals.length)&&!(action.confirm===true&&action.resetFollowing===true)) fail('Уже сформированы следующие игры. Подтвердите отмену последующих кругов и финалов при исправлении.');
       const g=t.rounds[ri].games.find(g=>g.id===action.game);
       if (!g || !Array.isArray(action.scores) || action.scores.length!==g.players.length) fail('Нужен счёт каждого игрока в бою.');
       const scores=action.scores.map(scoreValue);
       if (g.scores && !action.confirm) fail('Подтвердите замену записанного результата.');
-      g.scores=scores; break;
+      eventDetails.previousScores=clone(g.scores);if(ri!==t.rounds.length-1||t.finals.length)resetFollowing(t,action.round,eventDetails);g.scores=scores; break;
     }
     case 'swap': {
-      const r=t.rounds.at(-1);
-      if (!r || t.finals.length || r.games.some(g=>g.scores)) fail('Менять состав боёв можно только до внесения результатов текущего круга.');
-      const flat=r.games.flatMap(g=>g.players); if(action.a===action.b || !flat.includes(action.a)||!flat.includes(action.b)) fail('Выберите двух разных игроков.');
-      r.games.forEach(g=>g.players=g.players.map(id=>id===action.a?action.b:id===action.b?action.a:id));break;
+      const impact=swapImpact(t,action),r=t.rounds.find(r=>r.number===impact.round);
+      if((impact.savedGames||impact.followingRounds.length||impact.finals)&&action.confirm!==true)fail('Подтвердите сброс результатов затронутых боёв и последующих кругов.');
+      eventDetails.discardedGames=clone(r.games.filter(g=>impact.games.includes(g.id)));if(impact.followingRounds.length||impact.finals)resetFollowing(t,r.number,eventDetails);
+      for(const g of r.games)if(impact.games.includes(g.id)){g.players=g.players.map(id=>id===action.a?action.b:id===action.b?action.a:id);g.scores=null;}break;
     }
     case 'rollback': {
       if (!action.confirm || !Number.isInteger(action.keep) || action.keep<0 || action.keep>t.rounds.length) fail('Подтвердите отмену последующих кругов.');
@@ -137,7 +183,7 @@ export function applyAction(original, action, randomSeed = 1) {
       if(t.finals.length) fail('Финалы уже сформированы.');
       if (!Array.isArray(action.groups) || !action.groups[0]?.length || action.groups.length>2) fail('Выберите участников финала.');
       const ids=action.groups.flat();
-      if(ids.length!==new Set(ids).size || ids.some(id=>!t.players.some(p=>p.id===id)) || action.groups.some(g=>g.length>4 || g.length<1)) fail('В каждом финале от 1 до 4 уникальных игроков.');
+      if(ids.length!==new Set(ids).size || ids.some(id=>!activePlayers(t).some(p=>p.id===id)) || action.groups.some(g=>g.length>4 || g.length<1)) fail('В каждом финале от 1 до 4 уникальных игроков.');
       t.finals=action.groups.map((players,i)=>({id:`f${i}`,players,scores:null,places:null}));break;
     }
     case 'finalResults': {
@@ -151,8 +197,9 @@ export function applyAction(original, action, randomSeed = 1) {
     case 'reopen': t.finished=false;break;
     case 'archive': t.archived=!t.archived;break;
     case 'settings': {
-      const next=createTournament({id:t.id,name:action.name,date:action.date,location:action.location});
-      t.name=next.name;t.date=next.date;t.location=next.location;break;
+      const next=createTournament({id:t.id,name:action.name,date:action.date,location:action.location,scoreDivisor:action.scoreDivisor??scoringDivisor(t)});
+      if(next.scoreDivisor!==scoringDivisor(t)&&(t.rounds.length>1||t.finals.length)){if(action.confirm!==true)fail('Изменение делителя пересчитает очки. Подтвердите отмену кругов после первого и финалов.');resetFollowing(t,1,eventDetails);}
+      eventDetails.previousDivisor=scoringDivisor(t);t.name=next.name;t.date=next.date;t.location=next.location;t.scoreDivisor=next.scoreDivisor;break;
     }
     default: fail('Неизвестное действие.');
   }

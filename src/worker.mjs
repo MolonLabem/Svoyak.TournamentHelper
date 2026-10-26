@@ -6,26 +6,29 @@ const bad=message=>{throw new DomainError(message);};
 export function validateBackup(input) {
   const t=input?.tournament;
   if(input?.format!=='svoyak-v1'||!t||typeof t!=='object')bad('Неверный формат резервной копии.');
-  const fresh=createTournament({id:crypto.randomUUID(),name:t.name,date:t.date,location:t.location});
-  if(!Array.isArray(t.players)||t.players.length>40)bad('Некорректный список участников.');
+  const fresh=createTournament({id:crypto.randomUUID(),name:t.name,date:t.date,location:t.location,scoreDivisor:t.scoreDivisor});
+  if(!Array.isArray(t.players)||t.players.length>120)bad('Некорректный список участников.');
   const normalized=[];const ids=new Set(),seeds=new Set();
   fresh.players=t.players.map(p=>{
     if(!p||typeof p.id!=='string'||!/^p\d+$/.test(p.id)||ids.has(p.id)||!Number.isInteger(p.seed)||p.seed<1||p.seed>10000||p.id!==`p${p.seed}`||seeds.has(p.seed)||typeof p.name!=='string'||!p.name.trim()||p.name.length>100)bad('Некорректные данные участника.');
-    ids.add(p.id);seeds.add(p.seed);const name=p.name.trim().replace(/\s+/g,' ');const norm=name.normalize('NFKC').toLocaleLowerCase('ru');if(normalized.includes(norm))bad('В копии повторяются имена.');normalized.push(norm);return {id:p.id,seed:p.seed,name};
+    ids.add(p.id);seeds.add(p.seed);const name=p.name.trim().replace(/\s+/g,' ');const norm=name.normalize('NFKC').toLocaleLowerCase('ru');if(normalized.includes(norm))bad('В копии повторяются имена.');normalized.push(norm);if(p.active!==undefined&&typeof p.active!=='boolean')bad('Некорректный статус участника.');return {id:p.id,seed:p.seed,name,...(p.active===undefined?{}:{active:p.active})};
   });
+  if(fresh.players.filter(p=>p.active!==false).length>40)bad('В активном составе может быть не больше 40 игроков.');
   if(!Array.isArray(t.rounds)||t.rounds.length>3)bad('В копии может быть только три круга.');
   fresh.rounds=t.rounds.map((r,i)=>{
-    const sizes=groupSizes(fresh.players.length);
-    if(r?.number!==i+1||!Array.isArray(r.games)||r.games.length!==sizes.length)bad('Некорректная сетка круга.');
-    const seen=new Set();
+    const explicit=r?.roster!==undefined,roster=explicit?r.roster:fresh.players.map(p=>p.id);
+    if(!Array.isArray(roster)||roster.length<3||roster.length>40||new Set(roster).size!==roster.length||roster.some(id=>!ids.has(id)))bad('Некорректный состав круга.');
+    const sizes=groupSizes(roster.length),rosterIds=new Set(roster);
+    if(r?.number!==i+1||!Array.isArray(r.games)||!r.games.length||(!explicit&&r.games.length!==sizes.length))bad('Некорректная сетка круга.');
+    const seen=new Set(),gameIds=new Set();
     const games=r.games.map((g,j)=>{
-      if(g?.id!==`r${i+1}g${j+1}`||!Array.isArray(g.players)||g.players.length!==sizes[j])bad('Некорректный бой.');
-      for(const id of g.players){if(!ids.has(id)||seen.has(id))bad('Игрок пропущен или встречается в круге дважды.');seen.add(id);}
+      if(typeof g?.id!=='string'||!(new RegExp('^r'+(i+1)+'g[1-9]\\d{0,3}$')).test(g.id)||gameIds.has(g.id)||(!explicit&&g.id!==`r${i+1}g${j+1}`)||!Array.isArray(g.players)||![3,4].includes(g.players.length)||(!explicit&&g.players.length!==sizes[j]))bad('Некорректный бой.');gameIds.add(g.id);
+      for(const id of g.players){if(!rosterIds.has(id)||seen.has(id))bad('Игрок пропущен или встречается в круге дважды.');seen.add(id);}
       if(g.scores!==null&&(!Array.isArray(g.scores)||g.scores.length!==g.players.length||g.scores.some(s=>!Number.isInteger(s)||Math.abs(s)>99999999)))bad('Некорректные результаты боя.');
       return {id:g.id,players:[...g.players],scores:g.scores?[...g.scores]:null};
     });
-    if(seen.size!==ids.size)bad('Не все участники включены в круг.');
-    return {number:i+1,randomSeed:i===0&&Number.isInteger(r.randomSeed)?r.randomSeed:null,games};
+    if(seen.size!==rosterIds.size)bad('Не все участники включены в круг.');
+    return {number:i+1,randomSeed:i===0&&Number.isInteger(r.randomSeed)?r.randomSeed:null,...(explicit?{roster:[...roster]}:{}),games};
   });
   for(let i=0;i<fresh.rounds.length-1;i++)if(!roundComplete(fresh.rounds[i]))bad('Последующий круг не может существовать без завершения предыдущего.');
   if(!Array.isArray(t.finals)||t.finals.length>2)bad('Некорректные финалы.');
@@ -42,7 +45,7 @@ export function validateBackup(input) {
   if(fresh.finished&&(!fresh.finals.length||fresh.finals.some(g=>!g.places)))bad('Завершённый турнир должен иметь результаты финалов.');
   // Do not trust executable or extra object properties from imported files.
   if(!Array.isArray(t.history)||t.history.length>10000)bad('Слишком большая или некорректная история.');
-  const validTypes=new Set(['register','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings']);
+  const validTypes=new Set(['register','amendRoster','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings']);
   fresh.history=t.history.map(h=>{
     if(!h||!validTypes.has(h.type)||typeof h.at!=='string'||!Number.isFinite(Date.parse(h.at))||!h.details||typeof h.details!=='object'||h.details.type!==h.type)bad('Повреждён журнал изменений.');
     const d=h.details;
@@ -121,7 +124,7 @@ export async function handleApi(request,env){
  if(match&&!match[2]){
   if(!Number.isInteger(body.revision)||body.revision!==row.revision)return json({error:'Турнир изменён в другой вкладке.'},409);
   if(!body.action||typeof body.action.type!=='string')bad('Некорректное действие.');
-  const actionFields={register:['names'],rename:['id','name'],remove:['id'],draw:[],results:['round','game','scores','confirm'],swap:['a','b'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','places','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
+  const actionFields={register:['names'],amendRoster:['names','removeIds','restoreIds','scope','confirm'],rename:['id','name'],remove:['id'],draw:[],results:['round','game','scores','confirm','resetFollowing'],swap:['a','b','round','confirm'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','places','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location','scoreDivisor','confirm']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
   const t=applyAction(JSON.parse(row.payload),action,crypto.getRandomValues(new Uint32Array(1))[0]);
   const result=await env.DB.prepare('UPDATE tournaments SET payload=?,revision=?,updated_at=? WHERE id=? AND revision=?').bind(JSON.stringify(t),t.revision,new Date().toISOString(),t.id,row.revision).run();
   if(result.meta.changes!==1)return json({error:'Турнир изменён в другой вкладке.'},409);
