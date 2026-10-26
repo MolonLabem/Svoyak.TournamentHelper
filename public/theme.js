@@ -5,15 +5,16 @@
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   let preference = 'system';
   try { const stored = localStorage.getItem(key); if (modes.includes(stored)) preference = stored; } catch {}
+  const resolved = () => preference === 'system' ? (media.matches ? 'dark' : 'light') : preference;
   function apply() {
-    const resolved = preference === 'system' ? (media.matches ? 'dark' : 'light') : preference;
-    document.documentElement.dataset.theme = resolved;
-    document.documentElement.style.colorScheme = resolved;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#1b222a' : '#f5f7f8');
-    document.querySelectorAll('[data-appearance]').forEach(select => select.value = preference);
+    const theme = resolved();
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1b222a' : '#f5f7f8');
+    document.querySelectorAll('[data-appearance]').forEach(select => select.value = theme);
   }
   window.SvoyakAppearance = {
-    get: () => preference,
+    get: resolved,
     set(value) { if (!modes.includes(value)) return; preference = value; try { localStorage.setItem(key, value); } catch {} apply(); }
   };
   media.addEventListener('change', apply);
