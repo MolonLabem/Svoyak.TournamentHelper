@@ -1,7 +1,7 @@
 // Local-only regression: setup preview is the real pairing partition, and remains visible before confirmation.
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
-import {groupSizes} from '../src/domain.mjs';
+import {suggestedGroupSizes} from '../src/domain.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const base=process.env.APP_URL||'http://127.0.0.1:4173';assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -12,8 +12,8 @@ try{
  await p.goto(base);await p.locator('.home-heading [data-action=new]').click();await p.locator('input[name=name]').fill('QA · Размеры боёв');const created=p.waitForResponse(r=>new URL(r.url()).pathname==='/api/tournaments'&&r.request().method()==='POST');await confirm();id=(await(await created).json()).tournament.id;await read();
  for(const n of [0,1,2,3,4,5,6,7,9,14,37,40]){
   if(n>t.players.length)await action({type:'register',names:Array.from({length:n-t.players.length},(_,i)=>'Синтетический '+(t.players.length+i+1))});await p.goto(base+'/t/'+id+'#/participants');await p.reload();await p.waitForFunction(expected=>Number(document.querySelector('.heading-count')?.textContent)===expected,n);await p.waitForSelector('#draw-preview');const text=await p.locator('#draw-preview').innerText(),button=p.locator('[data-action=draw]');
-  if([0,1,2,5].includes(n)){assert.equal(await button.isDisabled(),true);assert.ok(text.length>0);continue;}
-  const expected=groupSizes(n),actualCounts=[...text.matchAll(/(\d+) (?:бой|боя|боёв) по ([34]) игрока/g)].flatMap(match=>Array(Number(match[1])).fill(Number(match[2])));assert.deepEqual(actualCounts,expected,`preview partition for ${n}: ${JSON.stringify(text)}`);assert.equal(await button.isEnabled(),true);
+  if([0,1].includes(n)){assert.equal(await button.isDisabled(),true);assert.ok(text.length>0);continue;}
+  const expected=suggestedGroupSizes(n),actualCounts=[...text.matchAll(/(\d+) (?:бой|боя|боёв) по ([234]) игрока/g)].flatMap(match=>Array(Number(match[1])).fill(Number(match[2])));assert.deepEqual(actualCounts,expected,`preview partition for ${n}: ${JSON.stringify(text)}`);assert.equal(await button.isEnabled(),true);
   if(n===14){for(const theme of ['light','dark']){await p.selectOption('[data-appearance]',theme);await p.locator('#toast').evaluate(el=>el.className='');await p.screenshot({path:`outputs/group-preview-${theme}-desktop.png`,fullPage:true});await p.setViewportSize({width:390,height:844});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:`outputs/group-preview-${theme}-mobile.png`,fullPage:true});await p.setViewportSize({width:1440,height:1000});}}
   await button.click();assert.ok(!await p.locator('#modal p').first().innerText().then(s=>s.includes('3–4')),'confirmation only protects locking');await confirm();await read();assert.deepEqual(t.rounds[0].games.map(game=>game.players.length),expected);await action({type:'rollback',keep:0,confirm:true});
  }

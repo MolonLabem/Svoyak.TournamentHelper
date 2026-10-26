@@ -26,7 +26,8 @@ export function ratingTSV(t){return ratingRows(t).map(row=>row.map(value=>typeof
 
 export const ratingExclusions=t=>ratingGames(t).filter(({game})=>game.players.length>4&&gameResult(game)).map(({label,game})=>({label,players:game.players.length}));
 export function gamesCSV(t){
- const names=new Map(t.players.map(p=>[p.id,p.name])),date=t.date?sheetDate(t.date):'',rows=[['Дата','Круг','Бой','Место за столом','Игрок','Счёт','Место в финале']];
- for(const {game,label,round}of ratingGames(t)){if(!gameResult(game))continue;for(const [i,id]of game.players.entries())rows.push([date,round,label,i+1,names.get(id)??'',game.scores[i]/100,game.places?.[i]??'']);}
+ const names=new Map(t.players.map(p=>[p.id,p.name])),date=t.date?sheetDate(t.date):'',rows=[['Дата','Круг','Бой','Место за столом','Игрок','Счёт','Место в финале','Статус']];
+ for(const {game,label,round}of ratingGames(t)){if(!gameResult(game))continue;for(const [i,id]of game.players.entries())rows.push([date,round,label,i+1,names.get(id)??'',game.scores[i]/100,game.places?.[i]??'','Сыгран']);}
+ for(const round of t.rounds)for(const id of round.missed??[])rows.push([date,round.number,'','',names.get(id)??'','','','Вынужденно пропустил бой']);
  return '\uFEFF'+rows.map(row=>row.map(value=>'"'+(typeof value==='number'?value.toLocaleString('ru-RU',{useGrouping:false,maximumFractionDigits:2}):safeText(value)).replace(/"/g,'""')+'"').join(';')).join('\r\n');
 }

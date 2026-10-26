@@ -8,6 +8,12 @@ export function groupSizes(n) {
   const fours = (n - 3 * threes) / 4;
   return [...Array(fours).fill(4), ...Array(threes).fill(3)];
 }
+export function customGroupSizes(value,count){
+ const sizes=typeof value==='string'?(value.trim()?value.trim().split(/\s*\+\s*/).map(n=>/^\d{1,2}$/.test(n)?Number(n):NaN):[]):value;
+ if(!Array.isArray(sizes)||sizes.length>20||sizes.some(n=>!Number.isInteger(n)||n<2||n>40)||sizes.reduce((sum,n)=>sum+n,0)!==count)fail(`Укажите размеры боёв через +: от 2 до 40 игроков в бою, сумма — ${count}.`);
+ return [...sizes];
+}
+export function suggestedGroupSizes(count){try{return groupSizes(count);}catch{if(count===0)return [];if(count===2)return [2];if(count===5)return [3,2];return null;}}
 export function scoreValue(value) {
   const text = String(value).trim().replace(',', '.');
   if (!/^-?\d{1,6}(\.\d{1,2})?$/.test(text)) fail('Счёт должен быть числом от −999999,99 до 999999,99, максимум два знака после запятой.');
@@ -33,7 +39,7 @@ export function gameResult(game, divisor=100) {
   });
 }
 export const finalPlaces=game=>gameResult(game)?.map(row=>row.place)??null;
-export const roundComplete = round => Boolean(round?.games.length && round.games.every(g => gameResult(g)));
+export const roundComplete = round => Boolean(round&&(round.games.length||(round.missed?.length??0))&&round.games.every(g=>gameResult(g)));
 export const finalPositionOffset=(finals,index)=>Number.isInteger(finals[index]?.positionOffset)?finals[index].positionOffset:index*4;
 export const finalPlaceLimit=g=>g.placesMode==='auto'||g.positionOffset!==undefined?g.players.length:Math.max(4,g.players.length);
 export function standings(t, before = t.rounds.length) {
@@ -44,7 +50,8 @@ export function standings(t, before = t.rounds.length) {
     const final=(t.finals??[]).flatMap((g,i)=>g.players.map((id,j)=>({id,place:g.places?.[j]?g.places[j]+finalPositionOffset(t.finals,i):null}))).find(f=>f.id===p.id)?.place??null;
     // Common integer numerator keeps ties, seed epsilon and pairing exact for any divisor.
     const pairKey=scoreNumerator*5000-p.seed*d,sortKey=pairKey+(final?(finalBonusBase-final)*1000000000*d:0);
-    return {...p,rounds,total,final,scoreNumerator,pairKey,sortKey,key:sortKey/d};
+    const missed=t.rounds.slice(0,before).map(r=>r.missed?.includes(p.id)??false);
+    return {...p,rounds,missed,total,final,scoreNumerator,pairKey,sortKey,key:sortKey/d};
   });
   const swiss=[...rows].sort((a,b)=>b.scoreNumerator-a.scoreNumerator||a.seed-b.seed);
   for(const p of rows){const first=swiss.findIndex(r=>r.scoreNumerator===p.scoreNumerator)+1,last=first+swiss.filter(r=>r.scoreNumerator===p.scoreNumerator).length-1;p.rank=first===last?String(first):`${first}–${last}`;}
@@ -78,9 +85,9 @@ function allocateRound(t, randomSeed = 1, retainedSizes = null) {
       groups.push(group);
     }
   }
-  return {number: n+1, randomSeed: n ? null : randomSeed, roster:activePlayers(t).map(p=>p.id), games: groups.map((players,i) => ({id:`r${n+1}g${i+1}`,players,scores:null}))};
+  return {...(sizes.some(n=>![3,4].includes(n))?{customGroups:true}:{}),number: n+1, randomSeed: n ? null : randomSeed, roster:activePlayers(t).map(p=>p.id), games: groups.map((players,i) => ({id:`r${n+1}g${i+1}`,players,scores:null}))};
 }
-export function pair(t,randomSeed=1){return allocateRound(t,randomSeed);}
+export function pair(t,randomSeed=1,sizes=null){const count=activePlayers(t).length;if(sizes!==null&&(count<2||count>40))fail('Для жеребьёвки нужно от 2 до 40 игроков.');return allocateRound(t,randomSeed,sizes===null?null:customGroupSizes(sizes,count));}
 function cleanName(s) {
   if (typeof s !== 'string') fail('Введите имя.');
   const name = s.trim().replace(/\s+/g,' ');
@@ -102,12 +109,12 @@ export function swapImpact(t,{a,b,round=t.rounds.length}) {
 export function correctionImpact(t,round){const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');return {round:r.number,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};}
 export function reshuffleImpact(t,round=1) {
   const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');
-  return {round:r.number,mode:r.number===1?'random':'swiss',unchanged:r.number!==1&&sameGroups(r,regeneratedSwissRound(t,r)),savedGames:r.games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
+  return {round:r.number,mode:r.number===1?'random':'swiss',unchanged:!r.games.length||(r.number!==1&&sameGroups(r,regeneratedSwissRound(t,r))),savedGames:r.games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
 }
 const groupSignature=groups=>groups.map(ids=>[...ids].sort().join(',')).sort().join('|');
 const sameGroups=(a,b)=>groupSignature(a.games.map(g=>g.players))===groupSignature(b.games.map(g=>g.players));
 function regeneratedSwissRound(t,r) {
-  const roster=r.roster??[...new Set(r.games.flatMap(g=>g.players))],ids=new Set(roster);
+  const roster=r.roster??[...new Set(r.games.flatMap(g=>g.players))],ids=new Set(roster.filter(id=>!r.missed?.includes(id)));
   const draft={...t,players:t.players.filter(p=>ids.has(p.id)).map(p=>({...p,active:true})),rounds:t.rounds.filter(q=>q.number<r.number),finals:[]};
   const generated=allocateRound(draft,1,r.games.map(g=>g.players.length));
   return {...r,randomSeed:null,roster:[...roster],games:r.games.map((g,i)=>({...g,players:generated.games[i].players,scores:null}))};
@@ -125,36 +132,52 @@ function reshuffledRound(r,randomSeed) {
   if(!changed(order)){order=[...original];const j=sizes.length>1?sizes[0]:1;[order[0],order[j]]=[order[j],order[0]];}
   return {...r,randomSeed,roster:[...(r.roster??original)],games:r.games.map(g=>({...g,players:order.splice(0,g.players.length),scores:null}))};
 }
-function amendRoster(t,action,randomSeed) {
-  if(t.archived||t.finished)fail('Сначала откройте турнир для редактирования.');
-  if(t.finals.length)fail('Сначала отмените финалы в настройках; результаты кругов сохранятся.');
-  if(!['current','next'].includes(action.scope))fail('Выберите, с какого момента менять состав.');
-  const names=(action.names??[]),removeIds=(action.removeIds??[]),restoreIds=(action.restoreIds??[]);
-  if(![names,removeIds,restoreIds].every(Array.isArray)||names.length+removeIds.length+restoreIds.length===0)fail('Выберите изменения состава.');
-  if(new Set([...removeIds,...restoreIds]).size!==removeIds.length+restoreIds.length)fail('Игрок указан в изменениях дважды.');
-  const cleaned=names.map(cleanName);if(new Set(cleaned.map(norm)).size!==cleaned.length)fail('Имена игроков должны быть уникальными.');
-  for(const r of t.rounds)r.roster??=[...new Set(r.games.flatMap(g=>g.players))];
-  for(const id of removeIds){const p=t.players.find(p=>p.id===id);if(!p||p.active===false)fail('Игрок не участвует в текущем составе.');p.active=false;}
-  for(const id of restoreIds){const p=t.players.find(p=>p.id===id);if(!p||p.active!==false)fail('Игрок уже участвует или не найден.');p.active=true;}
-  let seed=t.players.reduce((max,p)=>Math.max(max,p.seed),0);
-  for(const name of cleaned){const previous=t.players.find(p=>norm(p.name)===norm(name));if(previous){if(previous.active!==false)fail('Такое имя уже участвует.');previous.active=true;}else{seed++;t.players.push({id:`p${seed}`,seed,name,active:true});}}
-  if(activePlayers(t).length>40)fail('В одном круге может участвовать не больше 40 игроков.');
-  if(t.players.length>120)fail('В турнире может быть не больше 120 разных участников за три круга.');
-  const r=t.rounds.at(-1);let preservedGames=r?.games.filter(g=>g.scores).length??0,rebuiltGames=0,newSizes=[];
-  if(r&&action.scope==='current'){
-    const fixed=r.games.filter(g=>g.scores),fixedIds=new Set(fixed.flatMap(g=>g.players)),pool=activePlayers(t).filter(p=>!fixedIds.has(p.id));
-    if(fixedIds.size+pool.length>40)fail('С учётом уже сыгравших в этом круге будет больше 40 игроков. Примените изменение со следующего круга.');
-    if(!pool.length&&!fixed.length)fail('Для текущего круга нужно минимум 3 игрока.');
-    if(pool.length){try{newSizes=groupSizes(pool.length);}catch{fail(`В несыгранных боях останется ${pool.length} игроков: их нельзя разделить на бои по 3–4. Измените состав или примените со следующего круга.`);}}
-    const draft={...t,players:pool,rounds:t.rounds.slice(0,-1),finals:[]};
-    const generated=pool.length?pair(draft,r.randomSeed??randomSeed).games:[],oldPending=r.games.filter(g=>!g.scores);
-    let serial=Math.max(0,...r.games.map(g=>Number(g.id.match(/g(\d+)$/)?.[1]??0)));
-    generated.forEach((g,i)=>g.id=oldPending[i]?.id??`r${r.number}g${++serial}`);
-    let i=0;rebuiltGames=oldPending.length;r.games=r.games.flatMap(g=>g.scores?[g]:i<generated.length?[generated[i++]]:[]);r.games.push(...generated.slice(i));r.roster=[...new Set(r.games.flatMap(g=>g.players))];
-  }
-  return {round:r?.number??0,scope:action.scope,preservedGames,rebuiltGames,newSizes,activeCount:activePlayers(t).length};
+function amendRoster(t,action,randomSeed,planOnly=false) {
+ if(t.archived||t.finished)fail('Сначала откройте турнир для редактирования.');
+ if(t.finals.length)fail('Сначала отмените финалы в настройках; результаты кругов сохранятся.');
+ if(!['current','next'].includes(action.scope))fail('Выберите, с какого момента менять состав.');
+ const names=action.names??[],removeIds=action.removeIds??[],restoreIds=action.restoreIds??[];
+ if(![names,removeIds,restoreIds].every(Array.isArray))fail('Выберите изменения состава.');
+ const hasRosterChange=names.length+removeIds.length+restoreIds.length>0;
+ if(!hasRosterChange&&!planOnly&&action.sizes===undefined&&action.missedIds===undefined)fail('Выберите изменения состава или боёв.');
+ if(action.scope==='next'&&(action.sizes!==undefined||action.missedIds!==undefined))fail('Размеры боёв и пропуски применяются только к текущему кругу.');
+ if(new Set([...removeIds,...restoreIds]).size!==removeIds.length+restoreIds.length)fail('Игрок указан в изменениях дважды.');
+ const cleaned=names.map(cleanName);if(new Set(cleaned.map(norm)).size!==cleaned.length)fail('Имена игроков должны быть уникальными.');
+ for(const r of t.rounds)r.roster??=[...new Set([...r.games.flatMap(g=>g.players),...(r.missed??[])])];
+ for(const id of removeIds){const p=t.players.find(p=>p.id===id);if(!p||p.active===false)fail('Игрок не участвует в текущем составе.');p.active=false;}
+ for(const id of restoreIds){const p=t.players.find(p=>p.id===id);if(!p||p.active!==false)fail('Игрок уже участвует или не найден.');p.active=true;}
+ let seed=t.players.reduce((max,p)=>Math.max(max,p.seed),0);
+ for(const name of cleaned){const previous=t.players.find(p=>norm(p.name)===norm(name));if(previous){if(previous.active!==false)fail('Такое имя уже участвует.');previous.active=true;}else{seed++;t.players.push({id:`p${seed}`,seed,name,active:true});}}
+ if(activePlayers(t).length>40)fail('В одном круге может участвовать не больше 40 игроков.');
+ if(t.players.length>120)fail('В турнире может быть не больше 120 разных участников за три круга.');
+ const r=t.rounds.at(-1);let preservedGames=r?.games.filter(g=>g.scores).length??0,rebuiltGames=0,newSizes=[],pendingCount=0,missedCount=r?.missed?.length??0,choices=[];
+ if(!r&&!hasRosterChange)fail('Сначала начните круг.');
+ if(r&&action.scope==='current'){
+  const fixed=r.games.filter(g=>g.scores),fixedIds=new Set(fixed.flatMap(g=>g.players)),previousMissed=r.missed??[],missed=action.missedIds??previousMissed;
+  if(!Array.isArray(missed)||new Set(missed).size!==missed.length||missed.some(id=>!t.players.some(p=>p.id===id)))fail('Проверьте список пропустивших бой.');
+  if(missed.some(id=>fixedIds.has(id)))fail('У этого игрока уже записан результат. Сыгранные бои не изменяются.');
+  const waiting=new Set([...r.games.filter(g=>!g.scores).flatMap(g=>g.players),...previousMissed]);
+  const eligible=hasRosterChange?activePlayers(t):t.players.filter(p=>waiting.has(p.id));
+  const pool=eligible.filter(p=>!fixedIds.has(p.id)&&!missed.includes(p.id));pendingCount=pool.length;missedCount=missed.length;
+  if(fixedIds.size+pool.length+missed.length>40)fail('С учётом сыгравших и пропустивших в круге будет больше 40 игроков. Примените изменение со следующего круга.');
+  choices=t.players.filter(p=>!fixedIds.has(p.id)&&(eligible.some(q=>q.id===p.id)||missed.includes(p.id))).map(p=>({id:p.id,name:p.name,missed:missed.includes(p.id)}));
+  const suggestion=suggestedGroupSizes(pool.length);
+  if(planOnly)return {round:r.number,scope:action.scope,preservedGames,pendingCount,missedCount,choices,suggestedSizes:suggestion,activeCount:activePlayers(t).length};
+  if(pool.length){if(action.sizes!==undefined)newSizes=customGroupSizes(action.sizes,pool.length);else{try{newSizes=groupSizes(pool.length);}catch{fail(`В несыгранных боях останется ${pool.length} игроков. Выберите размеры боёв вручную, например 3 + 2 для пяти, или примените изменение со следующего круга.`);}}}
+  else if(action.sizes!==undefined)customGroupSizes(action.sizes,0);
+  if(!pool.length&&!fixed.length&&!missed.length)fail('В круге должны остаться игроки или отметки пропуска.');
+  const draft={...t,players:pool.map(p=>({...p,active:true})),rounds:t.rounds.slice(0,-1),finals:[]};
+  const generated=pool.length?allocateRound(draft,r.randomSeed??randomSeed,newSizes).games:[],oldPending=r.games.filter(g=>!g.scores);
+  let serial=Math.max(0,...r.games.map(g=>Number(g.id.match(/g(\d+)$/)?.[1]??0)));
+  generated.forEach((g,i)=>g.id=oldPending[i]?.id??`r${r.number}g${++serial}`);
+  let i=0;rebuiltGames=oldPending.length;r.games=r.games.flatMap(g=>g.scores?[g]:i<generated.length?[generated[i++]]:[]);r.games.push(...generated.slice(i));
+  r.roster=[...new Set([...r.games.flatMap(g=>g.players),...missed])];if(missed.length)r.missed=[...missed];else delete r.missed;
+  if(r.games.some(g=>![3,4].includes(g.players.length)))r.customGroups=true;
+ }
+ return {round:r?.number??0,scope:action.scope,preservedGames,rebuiltGames,newSizes,pendingCount,missedCount,choices,activeCount:activePlayers(t).length};
 }
 export function rosterChangePreview(t,action){return amendRoster(clone(t),action,1);}
+export function rosterChangeOptions(t,action){return amendRoster(clone(t),action,1,true);}
 function resetFollowing(t,round,eventDetails){eventDetails.discardedRounds=clone(t.rounds.filter(r=>r.number>round));eventDetails.discardedFinals=clone(t.finals);t.rounds=t.rounds.filter(r=>r.number<=round);t.finals=[];t.finished=false;}
 export function applyAction(original, action, randomSeed = 1) {
   const t = clone(original);
@@ -176,7 +199,7 @@ export function applyAction(original, action, randomSeed = 1) {
     }
     case 'amendRoster': {
       if(action.confirm!==true)fail('Подтвердите изменение состава.');
-      eventDetails.previousRound=clone(t.rounds.at(-1)??null);eventDetails.previousPlayers=clone(t.players);eventDetails.impact=amendRoster(t,action,randomSeed);break;
+      eventDetails.previousRound=clone(t.rounds.at(-1)??null);eventDetails.previousPlayers=clone(t.players);const {choices,...impact}=amendRoster(t,action,randomSeed);eventDetails.impact=impact;break;
     }
     case 'rename': {
       const p = t.players.find(p=>p.id===action.id); if (!p) fail('Игрок не найден.');
@@ -185,7 +208,7 @@ export function applyAction(original, action, randomSeed = 1) {
       p.name = name; break;
     }
     case 'remove': rosterOpen(); t.players=t.players.filter(p=>p.id!==action.id); break;
-    case 'draw': t.rounds.push(pair(t, randomSeed)); eventDetails.generatedRound=clone(t.rounds.at(-1)); break;
+    case 'draw': t.rounds.push(pair(t,randomSeed,action.sizes??null)); eventDetails.generatedRound=clone(t.rounds.at(-1)); break;
     case 'reshuffle': {
       const impact=reshuffleImpact(t,action.round);
       if(action.confirm!==true)fail('Подтвердите повторную жеребьёвку и сброс результатов этого круга.');
