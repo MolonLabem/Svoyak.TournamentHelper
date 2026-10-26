@@ -35,3 +35,11 @@ The initial draw no longer claims the roster is permanently locked. Player amend
 ## Tournament-scoped controls
 
 The app-header More menu now contains only New tournament and Rules/help; appearance stays global. The open tournament has local Settings and Export controls beside its tabs. Settings is rendered only for the owner of that tournament, including when the visitor owns a different event. History moves to the Settings heading; backup/restore/deletion remain in private settings. Export/print stays available to readonly viewers through the local export dialog. Duplicate Results export and global administration entries are removed. Bulk registration is visible within player setup; file selection is in that registration dialog. Existing score correction/rollback stays in game cards/settings. Mobile uses labelled accessible icons for local tools to keep the primary tabs compact.
+
+## Result sharing and remaining control friction
+
+A final-round audit exposed Swiss ranks displayed in the first column of a final-sorted table. Results now offers explicit Final places / Swiss controls; the selected rank matches the table order, with the other rank retained as a reference. Public standings are copied before sorting. Finished/read-only finals use status copy rather than instructions to enter scores.
+
+A missing-games filter could become inaccessible when the final score enabled the Next round button. The filter now stays available and saving the last missing game resets it to All games.
+
+A contextual Image action opens one preview/chooser, without new navigation panels. Saved rounds contain game scores plus cumulative Swiss standings; finals contain final places plus the separate Swiss table. Historical images exclude later games and newcomers, include forced skips and genuine zero/negative scores, and have no private fields. An incomplete stage is disabled. Clipboard denial has a PNG download fallback; large tables paginate. Blob resources are revoked on change/close, async work cannot reopen a closed dialog, and text tables provide an accessible alternative. Image generation requires no external service or account.
