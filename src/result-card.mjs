@@ -43,3 +43,27 @@ export function resultCard(t,stage){
   }
   return {name:String(t.name),date:String(t.date||''),stage:selected.label,divisor:scoringDivisor(t),sections,filename:`svoyak-${t.date||'results'}-${stage==='finals'?'finals':'round-'+stage}`};
 }
+
+// Telegram accepts 4096 message characters. Keep complete entries together with
+// room for a repeated event header and part number; never truncate a participant.
+export function telegramTextBlocks(card){
+  const clean=value=>String(value??'').replace(/[\r\n\t]+/g,' ');
+  const header=[clean(card.name),[card.date&&card.date.split('-').reverse().join('.'),clean(card.stage),`делитель ${card.divisor}`].filter(Boolean).join(' · ')].join('\n');
+  const limit=3900-header.length-32,parts=[];let body='',previous=null;
+  for(const section of card.sections){
+    const entries=section.rows.map(row=>{
+      const player=section.columns.findIndex(c=>c.label==='Игрок'),values=row.map(clean);
+      const title=player===1?`${values[0]}. ${values[1]}`:values[player<0?0:player];
+      const details=values.map((value,i)=>i===player||player===1&&i===0?null:`${section.columns[i].label}: ${value}`).filter(Boolean);
+      return title+(details.length?'\n  '+details.join(' · '):'');
+    });
+    if(section.note)entries.push(clean(section.note));
+    for(const entry of entries){
+      let text=(previous===section?'':clean(section.title)+'\n')+entry;
+      if(body&&body.length+text.length+2>limit){parts.push(body);body='';text=clean(section.title)+(previous===section?' · продолжение':'')+'\n'+entry;}
+      body+=(body?'\n\n':'')+text;previous=section;
+    }
+  }
+  if(body)parts.push(body);
+  return parts.map((part,i)=>header+'\n\n'+(parts.length>1?`Часть ${i+1} / ${parts.length}\n\n`:'')+part);
+}

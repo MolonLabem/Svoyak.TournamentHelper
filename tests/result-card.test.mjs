@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTournament,applyAction,standings} from '../src/domain.mjs';
 import {spectatorTournament} from '../src/access.mjs';
-import {resultCard,resultStages,swissRows,finalRows} from '../src/result-card.mjs';
+import {resultCard,resultStages,swissRows,finalRows,telegramTextBlocks} from '../src/result-card.mjs';
 
 function setup(n=8){return applyAction(createTournament({id:'card-test',name:'Кубок <друзей>',date:'2026-10-26',location:'PRIVATE VENUE',scoreDivisor:200}),{type:'register',names:Array.from({length:n},(_,i)=>'Игрок '+(i+1))});}
 function round(t){t=applyAction(t,{type:'draw'},7);for(const g of t.rounds.at(-1).games)t=applyAction(t,{type:'results',round:t.rounds.length,game:g.id,scores:g.players.map((_,i)=>[1000,700,700,-100][i%4])});return t;}
@@ -28,4 +28,19 @@ test('historical standings omit future newcomers and later withdrawals do not er
 });
 test('flexible finals include every real player for 5 and 40 players; no fixed four-seat truncation',()=>{
  for(const n of [5,40]){const t=finals(n),card=resultCard(t,'finals');assert.equal(card.sections[0].rows.length,n);assert.equal(card.sections[1].rows.length,n);assert.equal(new Set(card.sections[0].rows.map(r=>r[1])).size,n);assert.deepEqual(resultCard(spectatorTournament(t),'finals'),card);}
+});
+
+test('Telegram block contains the same complete round/final public results, including ties, zeros and negatives',()=>{
+ const t=finals(),roundText=telegramTextBlocks(resultCard(t,'1')).join('\n'),finalText=telegramTextBlocks(resultCard(t,'finals')).join('\n');
+ for(const value of ['Круг 1 · бой 1','Швейцарка · после круга 1','Счёт: -100','Место: 2,5','Очки:'])assert.ok(roundText.includes(value));
+ for(const value of ['Итоговые места','Швейцарка · после круга 3','Счёт: 0','Швейц. очки:','Итого:'])assert.ok(finalText.includes(value));
+ assert.deepEqual(telegramTextBlocks(resultCard(spectatorTournament(t),'finals')),telegramTextBlocks(resultCard(t,'finals')));assert.ok(!finalText.includes('PRIVATE'));assert.ok(!finalText.includes('card-test'));
+});
+test('Telegram blocks fit the message limit, retain long Unicode names and repeat context without cutting entries',()=>{
+ const t=finals(40);for(const [i,p]of t.players.entries())p.name='Тест '+String(i).padStart(2,'0')+' '+('Ё😀'.repeat(25));
+ const blocks=telegramTextBlocks(resultCard(t,'finals'));assert.ok(blocks.length>1);for(const [i,block]of blocks.entries()){assert.ok(block.length<=3900);assert.ok(block.startsWith(t.name+'\n'));assert.ok(block.includes(`Часть ${i+1} / ${blocks.length}`));}
+ const all=blocks.join('\n');for(const p of t.players)assert.equal(all.split(p.name+'\n  ').length-1,2);for(const block of blocks)assert.ok(!/[\uD800-\uDBFF]$/.test(block));
+});
+test('Telegram text retains literal markup and private data is still excluded when names contain formatting syntax',()=>{
+ const t=finals();t.name='Кубок <b>игра</b> & `текст`';t.players[0].name='Игрок <img src=x> ``` & 😀';const blocks=telegramTextBlocks(resultCard(t,'finals')),text=blocks.join('\n');assert.ok(text.includes(t.name));assert.ok(text.includes(t.players[0].name));assert.ok(!text.includes(t.location));assert.ok(blocks.every(b=>b.length<=3900));
 });
