@@ -33,14 +33,16 @@ export function gameResult(game, divisor=100) {
   });
 }
 export const roundComplete = round => Boolean(round?.games.length && round.games.every(g => gameResult(g)));
+export const finalPositionOffset=(finals,index)=>Number.isInteger(finals[index]?.positionOffset)?finals[index].positionOffset:index*4;
+export const finalPlaceLimit=g=>g.positionOffset===undefined?Math.max(4,g.players.length):g.players.length;
 export function standings(t, before = t.rounds.length) {
-  const d=scoringDivisor(t);
+  const d=scoringDivisor(t),finalBonusBase=Math.max(9,...(t.finals??[]).map((g,i)=>finalPositionOffset(t.finals,i)+g.players.length+1));
   const rows = t.players.map(p => {
     const numerators=t.rounds.slice(0,before).map(r=>{const g=r.games.find(g=>g.players.includes(p.id));if(!g)return null;const result=gameResult(g,d),i=g.players.indexOf(p.id);return result?(4-result[i].place)*d*200+g.scores[i]*2:null;});
     const scoreNumerator=numerators.reduce((sum,n)=>sum+(n??0),0),rounds=numerators.map(n=>n==null?null:n*50/d),total=scoreNumerator*50/d;
-    const final=(t.finals??[]).flatMap((g,i)=>g.players.map((id,j)=>({id,place:g.places?.[j]?g.places[j]+i*4:null}))).find(f=>f.id===p.id)?.place??null;
+    const final=(t.finals??[]).flatMap((g,i)=>g.players.map((id,j)=>({id,place:g.places?.[j]?g.places[j]+finalPositionOffset(t.finals,i):null}))).find(f=>f.id===p.id)?.place??null;
     // Common integer numerator keeps ties, seed epsilon and pairing exact for any divisor.
-    const pairKey=scoreNumerator*5000-p.seed*d,sortKey=pairKey+(final?(9-final)*1000000000*d:0);
+    const pairKey=scoreNumerator*5000-p.seed*d,sortKey=pairKey+(final?(finalBonusBase-final)*1000000000*d:0);
     return {...p,rounds,total,final,scoreNumerator,pairKey,sortKey,key:sortKey/d};
   });
   const swiss=[...rows].sort((a,b)=>b.scoreNumerator-a.scoreNumerator||a.seed-b.seed);
@@ -214,16 +216,16 @@ export function applyAction(original, action, randomSeed = 1) {
     case 'finals': {
       if(t.rounds.length!==3 || !t.rounds.every(roundComplete)) fail('Сначала завершите все три круга.');
       if(t.finals.length) fail('Финалы уже сформированы.');
-      if (!Array.isArray(action.groups) || !action.groups[0]?.length || action.groups.length>2) fail('Выберите участников финала.');
+      if (!Array.isArray(action.groups) || !action.groups.length || action.groups.length>2 || !action.groups.every(Array.isArray) || !action.groups[0].length) fail('Выберите участников финала.');
       const ids=action.groups.flat();
-      if(ids.length!==new Set(ids).size || ids.some(id=>!activePlayers(t).some(p=>p.id===id)) || action.groups.some(g=>g.length>4 || g.length<1)) fail('В каждом финале от 1 до 4 уникальных игроков.');
-      t.finals=action.groups.map((players,i)=>({id:`f${i}`,players,scores:null,places:null}));break;
+      if(ids.length!==new Set(ids).size || ids.some(id=>!activePlayers(t).some(p=>p.id===id)) || ids.length>40 || action.groups.some(g=>g.length>40 || g.length<1)) fail('Выберите от 1 до 40 разных участников из активного состава; игрок может участвовать только в одном финале.');
+      let offset=0;t.finals=action.groups.map((players,i)=>{const game={id:`f${i}`,players,positionOffset:offset,scores:null,places:null};offset+=players.length;return game;});break;
     }
     case 'finalResults': {
       const g=t.finals.find(g=>g.id===action.game);if(!g) fail('Финал не найден.');
       if(g.scores && !action.confirm) fail('Подтвердите замену результата финала.');
       if(!Array.isArray(action.scores)||!Array.isArray(action.places)||action.scores.length!==g.players.length||action.places.length!==g.players.length) fail('Заполните счёт и места всех игроков.');
-      if(action.places.some(p=>!Number.isInteger(p)||p<1||p>4)) fail('Место в финале — целое число от 1 до 4.');
+      const limit=finalPlaceLimit(g);if(action.places.some(p=>!Number.isInteger(p)||p<1||p>limit)) fail(`Место в финале — целое число от 1 до ${limit}.`);
       g.scores=action.scores.map(scoreValue);g.places=action.places;break;
     }
     case 'finish': if(!t.finals.length||t.finals.some(g=>!g.places)) fail('Заполните результаты финалов.');t.finished=true;break;

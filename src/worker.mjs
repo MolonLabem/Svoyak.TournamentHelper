@@ -1,5 +1,5 @@
 import {randomCapability,managementDigest,ownerCookie,ownerSession,newOwnerSession,canManage,bindSession,validManagementKey,ownerTournament,spectatorTournament} from './access.mjs';
-import {createTournament,applyAction,DomainError,groupSizes,roundComplete,gameResult} from './domain.mjs';
+import {createTournament,applyAction,DomainError,groupSizes,roundComplete,gameResult,finalPlaceLimit} from './domain.mjs';
 import {assets} from './assets.mjs';
 export const json=(data,status=200,extraHeaders={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...extraHeaders}});
 const bad=message=>{throw new DomainError(message);};
@@ -33,13 +33,14 @@ export function validateBackup(input) {
   for(let i=0;i<fresh.rounds.length-1;i++)if(!roundComplete(fresh.rounds[i]))bad('Последующий круг не может существовать без завершения предыдущего.');
   if(!Array.isArray(t.finals)||t.finals.length>2)bad('Некорректные финалы.');
   if(t.finals.length&&(fresh.rounds.length!==3||!fresh.rounds.every(roundComplete)))bad('Для финалов нужны три завершённых круга.');
-  const finalistIds=new Set();
+  const finalistIds=new Set(),flexible=t.finals.some(g=>g?.positionOffset!==undefined);let finalOffset=0;
   fresh.finals=t.finals.map((g,i)=>{
-    if(g?.id!==`f${i}`||!Array.isArray(g.players)||g.players.length<1||g.players.length>4)bad('Некорректный состав финала.');
+    if(g?.id!==`f${i}`||!Array.isArray(g.players)||g.players.length<1||g.players.length>(flexible?40:4))bad('Некорректный состав финала.');
+    if(flexible&&g.positionOffset!==finalOffset)bad('Некорректный порядок мест финалов.');finalOffset+=g.players.length;if(finalOffset>40)bad('В финалах может участвовать не больше 40 игроков.');
     for(const id of g.players){if(!ids.has(id)||finalistIds.has(id))bad('Некорректный участник финала.');finalistIds.add(id);}
     if(g.scores!==null&&(!Array.isArray(g.scores)||g.scores.length!==g.players.length||g.scores.some(s=>!Number.isInteger(s)||Math.abs(s)>99999999)))bad('Некорректный счёт финала.');
-    if(g.places!==null&&(!Array.isArray(g.places)||g.places.length!==g.players.length||g.places.some(p=>!Number.isInteger(p)||p<1||p>4)||!g.scores))bad('Некорректные места финала.');
-    return {id:g.id,players:[...g.players],scores:g.scores?[...g.scores]:null,places:g.places?[...g.places]:null};
+    if(g.places!==null&&(!Array.isArray(g.places)||g.places.length!==g.players.length||g.places.some(p=>!Number.isInteger(p)||p<1||p>finalPlaceLimit(g))||!g.scores))bad('Некорректные места финала.');
+    return {id:g.id,players:[...g.players],...(flexible?{positionOffset:g.positionOffset}:{}),scores:g.scores?[...g.scores]:null,places:g.places?[...g.places]:null};
   });
   fresh.finished=t.finished===true;fresh.archived=t.archived===true;
   if(fresh.finished&&(!fresh.finals.length||fresh.finals.some(g=>!g.places)))bad('Завершённый турнир должен иметь результаты финалов.');
