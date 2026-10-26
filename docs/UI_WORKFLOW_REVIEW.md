@@ -31,3 +31,7 @@ The two link controls are visible together at the tournament heading, with exact
 ## Denis organizer feedback
 
 The initial draw no longer claims the roster is permanently locked. Player amendments stay on the player screen with a small current/future scope dialog and exact pending-group validation. Game swap and historical score correction dialogs show the scores/rounds they reset; Cancel leaves saved data untouched. A custom integer raw-score divisor lives in creation/settings, with default 100 and an explicit dependent-round reset when changed later. Export uses a collapsed six-row A:D preview plus a fictitious TSV download, leaving the main screen uncluttered.
+
+## Tournament-scoped controls
+
+The app-header More menu now contains only New tournament and Rules/help; appearance stays global. The open tournament has local Settings and Export controls beside its tabs. Settings is rendered only for the owner of that tournament, including when the visitor owns a different event. History moves to the Settings heading; backup/restore/deletion remain in private settings. Export/print stays available to readonly viewers through the local export dialog. Duplicate Results export and global administration entries are removed. Bulk registration is visible within player setup; file selection is in that registration dialog. Existing score correction/rollback stays in game cards/settings. Mobile uses labelled accessible icons for local tools to keep the primary tabs compact.

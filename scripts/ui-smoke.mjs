@@ -8,14 +8,14 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||u
 const context=await browser.newContext({viewport:{width:1440,height:1100},acceptDownloads:true});
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const url=process.env.APP_URL||'http://127.0.0.1:4173';
-const selectView=async view=>{if(view==='tournaments')await page.locator('.app-brand').click();else if(view==='settings'){await page.locator('.more-menu summary').click();await page.locator('.menu-items [data-view="settings"]').click();}else if(view==='finals')await page.locator('.round-tabs [data-view="finals"]').click();else await page.locator(`.main-nav [data-view="${view}"]`).click();};
+const selectView=async view=>{if(view==='tournaments')await page.locator('.app-brand').click();else if(view==='settings'){await page.locator('.tournament-tools [data-view="settings"]').click();}else if(view==='finals')await page.locator('.round-tabs [data-view="finals"]').click();else await page.locator(`.main-nav [data-view="${view}"]`).click();};
 const confirm=async()=>{await page.locator('#modal button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('#modal').open);};
 try{
  await page.goto(url);await page.waitForSelector('h1');
  await page.locator('.home-heading [data-action="new"]').click();
  const name='UI проверка '+Date.now();
  await page.locator('#modal input[name="name"]').fill(name);await page.locator('#modal input[name="date"]').fill('2026-11-01');await page.locator('#modal input[name="location"]').fill('Тестовая площадка');await confirm();
- await page.locator('.more-menu summary').click();await page.locator('button[data-action="register"]').click();await page.locator('#modal textarea').fill('Анна\n АННА ');await page.locator('#modal button[type="submit"]').click();
+ await page.locator('button[data-action="register"]').click();await page.locator('#modal textarea').fill('Анна\n АННА ');await page.locator('#modal button[type="submit"]').click();
  await page.waitForFunction(()=>document.querySelector('.modal-error')?.textContent.includes('уникальными'));
  await page.locator('#modal textarea').fill(['Анна','Борис','Вера','Глеб','Дина','Егор','Жанна','Зоя','Игорь'].join('\n'));await confirm();
  assert.equal(await page.locator('#participant-rows tr').count(),9);
@@ -40,7 +40,7 @@ try{
  }
  await page.locator('button[data-action="finish"]').click();await confirm();await selectView('standings');
  assert.equal(await page.locator('tbody tr').count(),9);
- await page.locator('.round-head [data-action="export"]').click();const csvPromise=page.waitForEvent('download');await page.locator('button[data-action="csv"]').click();const csv=await csvPromise;const csvText=await readFile(await csv.path(),'utf8');assert.match(csvText,/Игрок/);assert.match(csvText,/Анна/);
+ await page.locator('.tournament-tools [data-action="export"]').click();const csvPromise=page.waitForEvent('download');await page.locator('button[data-action="csv"]').click();const csv=await csvPromise;const csvText=await readFile(await csv.path(),'utf8');assert.match(csvText,/Игрок/);assert.match(csvText,/Анна/);
  await page.locator('#modal [data-action="close"]').click();await selectView('settings');const backupPromise=page.waitForEvent('download');await page.locator('button[data-action="json"]').click();const backup=await backupPromise;const backupText=await readFile(await backup.path(),'utf8');const data=JSON.parse(backupText);assert.equal(data.tournament.finished,true);assert.equal(data.tournament.rounds.length,3);
  const title=await page.locator('h1').textContent();await page.reload();await page.waitForSelector('h1');assert.equal(await page.locator('h1').textContent(),title,'reload resumes persisted tournament');
  // A separate browser session must see server records, without localStorage.
