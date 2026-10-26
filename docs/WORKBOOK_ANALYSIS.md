@@ -1,0 +1,115 @@
+# Static workbook analysis
+
+Source: privately supplied `Табличка СИ DG.xlsm` (184762 bytes), credited in the task to Denis Galiakberov. Inspected as ZIP/OOXML using openpyxl and static decompression/extraction of `xl/vbaProject.bin` with oletools. **No VBA or embedded control was executed.** Source extraction is kept outside the repository. This document describes behavior and dependencies; it does not redistribute original VBA or explanatory prose.
+
+## Inventory
+
+All nine worksheets are `visible`; there are no hidden or very-hidden sheets. Some helper columns, rather than whole sheets, are hidden. There are no defined names, data-validation rules, merged ranges, or configured print areas. Two printer-setting binary parts are present. No userform or ActiveX part was found. There are three VML form-control buttons. The workbook contains dynamic-array/modern function references (`RANK.AVG`, `MINIFS`, `MAXIFS` and array INDEX/MATCH), an existing calculation chain and `xl/metadata.xml`.
+
+| Sheet | Size | Formulas | Responsibility |
+|---|---:|---:|---|
+| Инструкция | 28 × 2 | 0 | Explains three rounds plus grand/small finals and organizer workflow. |
+| Регистрация | 41 × 16 | 243 | Forty participant slots; count, partition into games, frozen random values/ranks and round-1 name lookup. Hidden H and O:P. |
+| Сетка | 64 × 37 | 1028 | Current standings, three groups of ten possible 3/4-player games, and two manually populated four-seat finals. Hidden Q, X, AE (game labels) and AK (final position). 32 conditional-format ranges on raw-score cells, used for visual score comparison. |
+| Служебные вкладки >> | 1 × 1 | 0 | Empty visual separator; no business data. |
+| Сортировка | 41 × 15 | 600 | Per-player round points, registration perturbation, allocation flags, cumulative sums and final display ordering. |
+| Бои_круг_2 | 5 × 3 | 6 | Formula-driven next group selection for round 2. |
+| Распределение_круг_2 | 41 × 176 | 2280 | Pair-distance matrix and successive selected-group membership masks. |
+| Бои_круг_3 | 5 × 3 | 6 | Formula-driven next group selection for round 3. |
+| Распределение_круг_3 | 41 × 176 | 2280 | Cumulative-distance matrix and masks including two historical round penalties. |
+
+The file is an empty tournament template: there is no participant dataset to migrate. Registration B2:B41 is the input. Names are lookup keys in the original and must be unique. Blank rows amid registrations can break the row-number-based random mapping and group assignment. The app replaces name keys with stable participant IDs and a separate registration seed.
+
+## VBA and controls
+
+Static extraction finds two standard modules, ThisWorkbook and five worksheet class modules. All workbook/worksheet class modules contain only attributes, with no event handlers or functions. There are no worksheet-change hooks, hidden setup procedures, custom scoring functions, forms, or outbound operations in the inspected VBA.
+
+| Procedure | Button | Actual responsibility |
+|---|---|---|
+| Module1: Жеребьёвка | Круг 1 | Populates RAND formulas for nonempty registrations in H2:H41, copies calculated values over the formulas to freeze them, sets registration P1 to Да, returns to Сетка. Round-1 names are formula lookups from those ranks. |
+| Module2: Круг2 | Круг 2 | Repeatedly copies the next-group formula output C2:C5 from Бои_круг_2, pastes values into T7:T10, T13:T16, …, T61:T64. Recalculation after each paste excludes already allocated players and selects the next group. |
+| Module2: Круг3 | Круг 3 | Performs the same sequential value-copy operation for Бои_круг_3 into AA7:AA10, AA13:AA16, …, AA61:AA64. |
+
+The macros are recorded selection/copy/paste workflows. The actual later-round algorithm lives in sheet formulas. The buttons do not validate round completion and may overwrite existing group names. Re-running round 1 can change names under existing scores. These are dangerous spreadsheet behaviors, explicitly blocked in the app.
+
+## Partition and lifecycle
+
+The workbook supports exactly three Swiss rounds followed by a grand final and small final. It has forty registration slots and ten game blocks per round. Registration E1 counts names. If N mod 4 is 0, 1, 2 or 3, E3 selects respectively 0, 3, 2 or 1 games of three. E2 is `(N − 3×E3)/4`. Games of four are placed before games of three. This partitions every N from 6 to 40 and also N=3,4. N=1,2,5 produces negative four-player game counts: a verified invalid partition, rejected by the app.
+
+There is no bye allocation or bye scoring. Odd counts such as 7,9,11 are handled by three-player games. There is no defined withdrawal, disqualification, substitute, late registration, additional Swiss round, bracket playoff or automatic finalist-selection mechanism. Registration and group name cells can be edited in Excel, but this does not provide a consistent withdrawal rule.
+
+## Scoring and standings
+
+Raw scores are entered in Сетка N, U and AB. For each four-row game block, O/V/AC uses descending `RANK.AVG` over the score range, only if that individual score cell is not blank. P/W/AD is `4 − rank + rawScore/100`. Blank unused fourth seats are not ranked in three-player games. Thus a three-player winner receives the same baseline 3 points as a four-player winner. Zero and negative raw scores are valid numerical inputs.
+
+Examples independently translated from these formulas:
+
+- Scores [1200,800,800,−100] → places [1,2.5,2.5,4] → points [15,9.5,9.5,−1].
+- Three scores [1000,1000,0] → places [1.5,1.5,3] → points [12.5,12.5,1].
+- Four zero scores → each place 2.5 and 1.5 points.
+
+Сортировка C/G/K uses name-based SUMIFS over each round’s computed points; L sums all three. There is no Buchholz, strength of schedule, head-to-head tie-breaker or win/loss count. Сетка G sums round totals. H displays a shared rank/range for equal cumulative points: e.g. `2–3`. App ties retain that shared Swiss rank.
+
+**Incomplete games:** Excel can assign provisional ranks to just the nonblank scores, and SUMIFS then propagates these. A later entered score can change earlier players’ computed places. The app instead commits each game atomically only after all scores are valid. Provisional input never affects standings or the next draw. This is an intentional correctness safeguard.
+
+Persisted raw scores use integer hundredths, and points integer ten-thousandths. Average ranks for groups of 3/4 are exact halves. Pairing distances use integer millionths: `pointsUnits × 100 − registrationSeed`. Inputs have at most two decimal places, bounded to ±999999.99. This is a documented finite precision improvement over unconstrained Excel floating-point cells.
+
+## Exact later-round group assignment
+
+Let `A_i = cumulativePoints_i − registrationNumber_i/1000000`. For round 2, cumulative points are round 1 only (Сортировка D). For round 3 they include rounds 1+2 (H). A candidate pair distance is:
+
+`abs(A_i − A_j) + 1000×sameGameInRound1 + 2000×sameGameInRound2`.
+
+The round-2 matrix omits the last term. The source cells are Распределение_круг_2 B2:AO41 and Распределение_круг_3 B2:AO41. Same-player matrix cells contain a nonnumeric marker. Group masks AQ:CD, CJ:DW and EC:FP track the first 1, 2 and 3 selections. CH, EA and FT sum the candidate’s distances to selected group members. Allocation flags exclude already selected or previously allocated players; million-point helper sentinels exist as additional protection. The independent app uses explicit exclusion sets, preserving valid-input behavior.
+
+For each game, in order:
+
+1. Select the strongest available leader (minimum rank from Сортировка E/I).
+2. For every remaining player, sum distances to all players already selected for this game.
+3. Select the candidate with the smallest sum. On exact equality, source MATCH returns the first registration row, so the app uses the smallest registration seed.
+4. Repeat until the game has its required 3/4 players; remove them from the available pool and continue.
+
+The workbook’s short prose suggests selecting strongest players without prior encounters. The actual formulas are more specific: **sum of distances with finite weighted penalties**. The implementation follows the formulas. It is neither a hard no-repeat algorithm nor a global optimizer. Later greedy choices and the final residual game can contain repeat meetings. Very large raw scores can outweigh penalties; the app preserves this mathematical behavior and flags repeats in the UI.
+
+First-round RAND values are frozen by VBA. The app uses a uniform Fisher–Yates draw with a stored 32-bit seed. It is random for new draws and reproducible for the same seed; it does not attempt to reproduce Excel’s unspecified RAND sequence. Subsequent rounds are deterministic.
+
+## Finals and final ordering
+
+Сетка AH7:AH10 and AH13:AH16 are manually entered participant names; AI raw scores and AJ places are manual inputs. Neither finalist qualification nor final places are calculated from raw scores. AK copies grand-final AJ and adds 4 for small-final AJ.
+
+Сортировка M looks up final position. N sorts by:
+
+`SwissTotal − registrationNumber/1000000 + (9 − finalPosition)×1000`,
+
+with no final bonus when final position is absent. The app reproduces this numeric priority key and retains Swiss totals/ranks separately. The final place is shown in its own column. Equal final places are allowed, as in manual source cells; the Swiss score and registration seed still affect their display order. The finite final bonus is not replaced by an unconditional finals-first comparator, so extreme scores can outweigh it. App final places are validated as integers 1–4 within each final; the source cells themselves are unconstrained.
+
+## Corrections, reports and export mapping
+
+| Excel workflow | Web equivalent / decision |
+|---|---|
+| Yellow registration cells | Individual or bulk unique-name entry, one-column text/CSV import, name search and pre-start removal. |
+| Round 1 button | Explicit confirmed draw, fixed roster, stored randomness seed. |
+| Round 2/3 buttons | Atomic deterministic draw only after all preceding scores are recorded. |
+| Raw score cells | Inline per-game keyboard entry, validation, confirmation to replace a recorded result. |
+| Formula places/points | Independent exact-arithmetic domain functions with no editable derived fields. |
+| Current standings | Shared Swiss ranks, per-round points, cumulative score and manual final place; display sorting. |
+| Manual editing group names | Explicit pairwise swap before any current-round result; repeated meetings remain visible. |
+| Editing old score with later groups already present | App locks old results; organizer explicitly discards subsequent rounds/finals first. The audit trail retains original actions/results. No silent re-pairing. |
+| Manual finalist cells | Manual participant selection and manual final places/scores. |
+| Workbook save/resume | Hosted D1 with atomic revision checks, local SQLite development adapter, archive/reopen workflows and validated JSON backup/restore as a separate tournament. |
+| General Excel printing | Print styles for games or standings, CSV export and JSON backup. No source-specific report/export macro or configured print area exists to replicate. |
+
+## Ambiguities and limits
+
+- The original workbook is a template, so cached outputs cannot validate nonempty scenarios. Fixtures are independently calculated translations of identified formulas using rational arithmetic, not a claim that Excel was executed.
+- Source formulas assume contiguous unique registrations and completed earlier rounds. Names are fragile primary keys; the app uses IDs and rejects duplicates case-insensitively and after whitespace/Unicode normalization.
+- N=1,2,5 invalid partitions, incomplete progression and overwrites are blocked. There is no invented bye or withdrawal rule.
+- Original RAND duplicate ranks are theoretically possible; the app’s permutation guarantees one occurrence per player.
+- Empty/invalid final values in Excel can produce ambiguous ordering. The app accepts selected existing IDs and validated manually assigned places only.
+- The original contains no archive, audit log, backup or optimistic concurrency system; these are persistence/integrity additions within the requested workflow.
+- The .NET preference is superseded by the Sites Worker runtime constraint. No generic Swiss library is substituted.
+- The Sites helper executables and Vinext starter source are absent from this workspace. A small dependency-free Worker and ordinary authenticated Git are used, with D1 migration declarations. This is an environment accommodation, not a claim of Vinext usage.
+
+## Copyright
+
+The source was provided for behavioral analysis; no redistribution permission for its contents or VBA was established. Neither the workbook nor extracted macros are committed, served, or included in the deployment archive. Attribution is preserved. The independent code’s Required Notice uses the supplied repository owner handle `MolonLabem`; legal identity and chain of title remain unverified. The official PolyForm license text is included unmodified, with notices outside it.

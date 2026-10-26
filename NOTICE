@@ -1,0 +1,9 @@
+Required Notice: Copyright 2026 MolonLabem (repository owner: https://github.com/MolonLabem).
+
+The copyright holder is identified by the repository account, not an invented legal name. Confirm the legal identity and ownership before redistribution or granting commercial permissions.
+
+Original workbook: «Табличка СИ DG.xlsm», authored by Denis Galiakberov (Денис Галиакберов). The workbook was supplied privately for behavioral analysis. The original workbook, extracted VBA and workbook contents are not included in this repository or deployment. No rights to redistribute or relicense the original material are asserted.
+
+This independently written implementation is licensed only to the extent that the repository owner is entitled to license it. PolyForm Noncommercial 1.0.0 does not grant commercial use outside its permitted purposes; separate permission must be obtained from the copyright holder for other commercial uses.
+
+The optional Golos Text web font is served by Google Fonts under the SIL Open Font License 1.1; it is not bundled. The UI uses system fonts if it is unavailable. No third-party JavaScript packages are shipped.

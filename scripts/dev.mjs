@@ -1,0 +1,14 @@
+import {createServer} from 'node:http';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,mkdirSync} from 'node:fs';
+import worker from '../src/worker.mjs';
+mkdirSync('.local',{recursive:true});
+const db=new DatabaseSync('.local/tournaments.db');
+db.exec('CREATE TABLE IF NOT EXISTS tournaments (id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)');
+if(!db.prepare('PRAGMA table_info(tournaments)').all().some(c=>c.name==='management_key_hash'))db.exec('ALTER TABLE tournaments ADD COLUMN management_key_hash TEXT');
+db.exec('CREATE TABLE IF NOT EXISTS tournament_owner_sessions(tournament_id TEXT NOT NULL,session_hash TEXT NOT NULL,expires_at INTEGER NOT NULL,PRIMARY KEY(tournament_id,session_hash))');
+export const adapter={prepare(sql){let values=[];return {bind(...v){values=v;return this;},async all(){return {results:db.prepare(sql).all(...values)};},async first(){return db.prepare(sql).get(...values)??null;},executeSync(){const r=db.prepare(sql).run(...values);return {meta:{changes:Number(r.changes)}};},async run(){return this.executeSync();}};},async batch(statements){db.exec('BEGIN');try{const values=statements.map(s=>s.executeSync());db.exec('COMMIT');return values;}catch(error){db.exec('ROLLBACK');throw error;}}};
+const port=Number(process.env.PORT||4173);
+const server=createServer(async(req,res)=>{try{const bytes=[];for await(const b of req)bytes.push(b);const body=Buffer.concat(bytes);const headers=new Headers(req.headers);const request=new Request(`http://${req.headers.host}${req.url}`,{method:req.method,headers,...(body.length?{body}:{} )});const response=await worker.fetch(request,{DB:adapter,LOCAL_DEV:true});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));}catch(e){console.error('Local request failed',e?.name);res.writeHead(500);res.end('Local server error');}});
+server.listen(port,'127.0.0.1',()=>console.log(`Local: http://127.0.0.1:${port}`));
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>server.close(()=>{db.close();process.exit(0);}));

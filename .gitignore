@@ -361,3 +361,17 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Svoya Igra web app and private runtime files
+dist/
+outputs/
+.wrangler/
+.sites-runtime/
+.env*
+*.db
+*.db-shm
+*.db-wal
+*.xlsm
+*.bin
+.local/
+src/assets.mjs
