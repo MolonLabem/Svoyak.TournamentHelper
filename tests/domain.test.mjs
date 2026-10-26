@@ -13,9 +13,9 @@ test('creation and participant validation are atomic and keep unique IDs',()=>{
  t=applyAction(t,{type:'remove',id:'p2'});assert.equal(t.players.length,2);
  assert.throws(()=>applyAction(make(40),{type:'register',names:['Дополнительный']}),/40/);
 });
-test('every supported count partitions into exactly 3/4, without automatic byes',()=>{
- for(let n=3;n<=40;n++){if(n===5){assert.throws(()=>groupSizes(n));continue;}const sizes=groupSizes(n);assert.equal(sizes.reduce((a,b)=>a+b),n);assert.ok(sizes.every(n=>n===3||n===4));const r=pair(make(n),98);assert.equal(new Set(r.games.flatMap(g=>g.players)).size,n);}
- for(const n of [0,1,2,5,41])assert.throws(()=>groupSizes(n));
+test('default partitions preserve workbook sizes and use 3+2 for five, without byes',()=>{
+ for(let n=3;n<=40;n++){const sizes=groupSizes(n);assert.equal(sizes.reduce((a,b)=>a+b),n);assert.ok(sizes.every(size=>size===3||size===4||(n===5&&size===2)));const r=pair(make(n),98);assert.equal(new Set(r.games.flatMap(g=>g.players)).size,n);}
+ for(const n of [0,1,2,41])assert.throws(()=>groupSizes(n));
  assert.deepEqual(groupSizes(7),[4,3]);assert.deepEqual(groupSizes(9),[3,3,3]);assert.deepEqual(groupSizes(14),[4,4,3,3]);
 });
 test('source RANK.AVG and point formula, ties, negative/decimal/zero scores',()=>{

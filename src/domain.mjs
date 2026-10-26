@@ -3,7 +3,8 @@ export class DomainError extends Error {}
 const fail = message => { throw new DomainError(message); };
 export const clone = value => structuredClone(value);
 export function groupSizes(n) {
-  if (!Number.isInteger(n) || n < 3 || n > 40 || n === 5) fail('Нужно от 3 до 40 игроков. Для 5 игроков невозможно составить бои по 3–4 человека.');
+  if(n===5)return [3,2];
+  if (!Number.isInteger(n) || n < 3 || n > 40) fail('Нужно от 3 до 40 игроков. Пять игроков распределяются в бои 3 + 2.');
   const threes = [0,3,2,1][n % 4];
   const fours = (n - 3 * threes) / 4;
   return [...Array(fours).fill(4), ...Array(threes).fill(3)];
@@ -13,7 +14,9 @@ export function customGroupSizes(value,count){
  if(!Array.isArray(sizes)||sizes.length>20||sizes.some(n=>!Number.isInteger(n)||n<2||n>40)||sizes.reduce((sum,n)=>sum+n,0)!==count)fail(`Укажите размеры боёв через +: от 2 до 40 игроков в бою, сумма — ${count}.`);
  return [...sizes];
 }
-export function suggestedGroupSizes(count){try{return groupSizes(count);}catch{if(count===0)return [];if(count===2)return [2];if(count===5)return [3,2];return null;}}
+export function suggestedGroupSizes(count){try{return groupSizes(count);}catch{if(count===0)return [];if(count===2)return [2];return null;}}
+export const chairCount=game=>game.chairs??0;
+export function validateChairCount(game,count){if(!Number.isInteger(count)||count<0||count>40-game.players.length)fail('В бою может быть не больше 40 мест вместе со стульями.');return count;}
 export function scoreValue(value) {
   const text = String(value).trim().replace(',', '.');
   if (!/^-?\d{1,6}(\.\d{1,2})?$/.test(text)) fail('Счёт должен быть числом от −999999,99 до 999999,99, максимум два знака после запятой.');
@@ -150,7 +153,7 @@ function amendRoster(t,action,randomSeed,planOnly=false) {
  for(const name of cleaned){const previous=t.players.find(p=>norm(p.name)===norm(name));if(previous){if(previous.active!==false)fail('Такое имя уже участвует.');previous.active=true;}else{seed++;t.players.push({id:`p${seed}`,seed,name,active:true});}}
  if(activePlayers(t).length>40)fail('В одном круге может участвовать не больше 40 игроков.');
  if(t.players.length>120)fail('В турнире может быть не больше 120 разных участников за три круга.');
- const r=t.rounds.at(-1);let preservedGames=r?.games.filter(g=>g.scores).length??0,rebuiltGames=0,newSizes=[],pendingCount=0,missedCount=r?.missed?.length??0,choices=[];
+ const r=t.rounds.at(-1);let preservedGames=r?.games.filter(g=>g.scores).length??0,rebuiltGames=0,newSizes=[],pendingCount=0,missedCount=r?.missed?.length??0,chairsRemoved=0,choices=[];
  if(!r&&!hasRosterChange)fail('Сначала начните круг.');
  if(r&&action.scope==='current'){
   const fixed=r.games.filter(g=>g.scores),fixedIds=new Set(fixed.flatMap(g=>g.players)),previousMissed=r.missed??[],missed=action.missedIds??previousMissed;
@@ -169,12 +172,12 @@ function amendRoster(t,action,randomSeed,planOnly=false) {
   const draft={...t,players:pool.map(p=>({...p,active:true})),rounds:t.rounds.slice(0,-1),finals:[]};
   const generated=pool.length?allocateRound(draft,r.randomSeed??randomSeed,newSizes).games:[],oldPending=r.games.filter(g=>!g.scores);
   let serial=Math.max(0,...r.games.map(g=>Number(g.id.match(/g(\d+)$/)?.[1]??0)));
-  generated.forEach((g,i)=>g.id=oldPending[i]?.id??`r${r.number}g${++serial}`);
+  generated.forEach((g,i)=>{g.id=oldPending[i]?.id??`r${r.number}g${++serial}`;const count=chairCount(oldPending[i]??{});if(count){validateChairCount(g,count);g.chairs=count;}});chairsRemoved=oldPending.slice(generated.length).reduce((sum,g)=>sum+chairCount(g),0);
   let i=0;rebuiltGames=oldPending.length;r.games=r.games.flatMap(g=>g.scores?[g]:i<generated.length?[generated[i++]]:[]);r.games.push(...generated.slice(i));
   r.roster=[...new Set([...r.games.flatMap(g=>g.players),...missed])];if(missed.length)r.missed=[...missed];else delete r.missed;
   if(r.games.some(g=>![3,4].includes(g.players.length)))r.customGroups=true;
  }
- return {round:r?.number??0,scope:action.scope,preservedGames,rebuiltGames,newSizes,pendingCount,missedCount,choices,activeCount:activePlayers(t).length};
+ return {round:r?.number??0,scope:action.scope,preservedGames,rebuiltGames,newSizes,pendingCount,missedCount,chairsRemoved,choices,activeCount:activePlayers(t).length};
 }
 export function rosterChangePreview(t,action){return amendRoster(clone(t),action,1);}
 export function rosterChangeOptions(t,action){return amendRoster(clone(t),action,1,true);}
@@ -215,6 +218,11 @@ export function applyAction(original, action, randomSeed = 1) {
       const r=t.rounds.find(r=>r.number===impact.round);if(impact.unchanged)return t;
       const generated=r.number===1?reshuffledRound(r,randomSeed):regeneratedSwissRound(t,r);eventDetails.mode=impact.mode;eventDetails.previousRound=clone(r);
       resetFollowing(t,r.number,eventDetails);t.rounds[t.rounds.length-1]=generated;eventDetails.generatedRound=clone(generated);break;
+    }
+    case 'chairs': {
+      const game=[...t.rounds.flatMap(r=>r.games),...t.finals].find(g=>g.id===action.game);if(!game)fail('Бой не найден.');
+      const count=validateChairCount(game,action.count),previous=chairCount(game);if(previous===count)return t;
+      eventDetails.previousCount=previous;if(count)game.chairs=count;else delete game.chairs;break;
     }
     case 'results': {
       const ri = t.rounds.findIndex(r=>r.number===action.round);

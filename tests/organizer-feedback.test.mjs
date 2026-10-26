@@ -38,7 +38,7 @@ test('withdrawal of an already played participant retains points and excludes on
  t=amend(t,{scope:'next',restoreIds:[removed]});assert.equal(activePlayers(t).length,8);assert.equal(t.players.find(p=>p.id===removed).id,removed);
 });
 test('invalid remaining groups are rejected atomically, with a next-round alternative for late arrivals',()=>{
- let t=draw(make());t=score(t,t.rounds[0].games[0]);const before=structuredClone(t);assert.throws(()=>amend(t,{names:['Поздний игрок']}),/останется 5/);assert.deepEqual(t,before);
+ let t=draw(make());t=score(t,t.rounds[0].games[0]);const before=structuredClone(t);assert.throws(()=>amend(t,{removeIds:t.rounds[0].games[1].players.slice(0,3)}),/останется 1/);assert.deepEqual(t,before);
  t=amend(t,{names:['Поздний игрок'],scope:'next'});assert.equal(activePlayers(t).length,9);assert.deepEqual(t.rounds[0],before.rounds[0]);assert.equal(standings(t).find(p=>p.id==='p9').total,0);assert.deepEqual(standings(t).find(p=>p.id==='p9').rounds,[null]);t=complete(t);assert.equal(pair(t).roster.length,9);
 });
 test('late additions can join unplayed games, and returning a player reuses the original identity',()=>{
