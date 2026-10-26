@@ -48,8 +48,8 @@ export function standings(t, before = t.rounds.length) {
   return rows.sort((a,b)=>b.sortKey-a.sortKey||a.seed-b.seed);
 }
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let r = Math.imul(seed ^ seed >>> 15, 1 | seed); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
-export function pair(t, randomSeed = 1) {
-  const sizes = groupSizes(activePlayers(t).length);
+function allocateRound(t, randomSeed = 1, retainedSizes = null) {
+  const sizes = retainedSizes??groupSizes(activePlayers(t).length);
   const n = t.rounds.length;
   if (n >= 3) fail('Три круга уже сыграны. Перейдите к финалам.');
   if (n && !roundComplete(t.rounds.at(-1))) fail('Сначала внесите результаты всех боёв текущего круга.');
@@ -77,6 +77,7 @@ export function pair(t, randomSeed = 1) {
   }
   return {number: n+1, randomSeed: n ? null : randomSeed, roster:activePlayers(t).map(p=>p.id), games: groups.map((players,i) => ({id:`r${n+1}g${i+1}`,players,scores:null}))};
 }
+export function pair(t,randomSeed=1){return allocateRound(t,randomSeed);}
 function cleanName(s) {
   if (typeof s !== 'string') fail('Введите имя.');
   const name = s.trim().replace(/\s+/g,' ');
@@ -98,14 +99,21 @@ export function swapImpact(t,{a,b,round=t.rounds.length}) {
 export function correctionImpact(t,round){const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');return {round:r.number,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};}
 export function reshuffleImpact(t,round=1) {
   const r=t.rounds.find(r=>r.number===Number(round));if(!r)fail('Круг не найден.');
-  if(r.number!==1)fail('Случайная жеребьёвка доступна только в первом круге; в следующих действует швейцарская система.');
-  return {round:r.number,savedGames:r.games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
+  return {round:r.number,mode:r.number===1?'random':'swiss',unchanged:r.number!==1&&sameGroups(r,regeneratedSwissRound(t,r)),savedGames:r.games.filter(g=>g.scores).length,followingRounds:t.rounds.filter(q=>q.number>r.number).map(q=>q.number),finals:t.finals.length};
+}
+const groupSignature=groups=>groups.map(ids=>[...ids].sort().join(',')).sort().join('|');
+const sameGroups=(a,b)=>groupSignature(a.games.map(g=>g.players))===groupSignature(b.games.map(g=>g.players));
+function regeneratedSwissRound(t,r) {
+  const roster=r.roster??[...new Set(r.games.flatMap(g=>g.players))],ids=new Set(roster);
+  const draft={...t,players:t.players.filter(p=>ids.has(p.id)).map(p=>({...p,active:true})),rounds:t.rounds.filter(q=>q.number<r.number),finals:[]};
+  const generated=allocateRound(draft,1,r.games.map(g=>g.players.length));
+  return {...r,randomSeed:null,roster:[...roster],games:r.games.map((g,i)=>({...g,players:generated.games[i].players,scores:null}))};
 }
 function reshuffledRound(r,randomSeed) {
   const original=r.games.flatMap(g=>g.players),random=rng(randomSeed),sizes=r.games.map(g=>g.players.length);
   let order;
-  const signature=groups=>groups.map(ids=>[...ids].sort().join(',')).sort().join('|'),previous=signature(r.games.map(g=>g.players));
-  const changed=ids=>{if(r.games.length===1)return ids.some((id,i)=>id!==original[i]);let offset=0;return signature(sizes.map(n=>ids.slice(offset,offset+=n)))!==previous;};
+  const previous=groupSignature(r.games.map(g=>g.players));
+  const changed=ids=>{if(r.games.length===1)return ids.some((id,i)=>id!==original[i]);let offset=0;return groupSignature(sizes.map(n=>ids.slice(offset,offset+=n)))!==previous;};
   // A reroll must change the actual groups, rather than only reorder seats.
   for(let attempt=0;attempt<32;attempt++){
     order=[...original];for(let i=order.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
@@ -178,8 +186,9 @@ export function applyAction(original, action, randomSeed = 1) {
     case 'reshuffle': {
       const impact=reshuffleImpact(t,action.round);
       if(action.confirm!==true)fail('Подтвердите повторную жеребьёвку и сброс результатов этого круга.');
-      const r=t.rounds.find(r=>r.number===impact.round);eventDetails.previousRound=clone(r);
-      resetFollowing(t,r.number,eventDetails);const generated=reshuffledRound(r,randomSeed);t.rounds[t.rounds.length-1]=generated;eventDetails.generatedRound=clone(generated);break;
+      const r=t.rounds.find(r=>r.number===impact.round);if(impact.unchanged)return t;
+      const generated=r.number===1?reshuffledRound(r,randomSeed):regeneratedSwissRound(t,r);eventDetails.mode=impact.mode;eventDetails.previousRound=clone(r);
+      resetFollowing(t,r.number,eventDetails);t.rounds[t.rounds.length-1]=generated;eventDetails.generatedRound=clone(generated);break;
     }
     case 'results': {
       const ri = t.rounds.findIndex(r=>r.number===action.round);
