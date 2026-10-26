@@ -32,9 +32,10 @@ export function gameResult(game, divisor=100) {
     return {place, points: ((4-place)*d*200+raw*2)*50/d};
   });
 }
+export const finalPlaces=game=>gameResult(game)?.map(row=>row.place)??null;
 export const roundComplete = round => Boolean(round?.games.length && round.games.every(g => gameResult(g)));
 export const finalPositionOffset=(finals,index)=>Number.isInteger(finals[index]?.positionOffset)?finals[index].positionOffset:index*4;
-export const finalPlaceLimit=g=>g.positionOffset===undefined?Math.max(4,g.players.length):g.players.length;
+export const finalPlaceLimit=g=>g.placesMode==='auto'||g.positionOffset!==undefined?g.players.length:Math.max(4,g.players.length);
 export function standings(t, before = t.rounds.length) {
   const d=scoringDivisor(t),finalBonusBase=Math.max(9,...(t.finals??[]).map((g,i)=>finalPositionOffset(t.finals,i)+g.players.length+1));
   const rows = t.players.map(p => {
@@ -219,14 +220,15 @@ export function applyAction(original, action, randomSeed = 1) {
       if (!Array.isArray(action.groups) || !action.groups.length || action.groups.length>2 || !action.groups.every(Array.isArray) || !action.groups[0].length) fail('Выберите участников финала.');
       const ids=action.groups.flat();
       if(ids.length!==new Set(ids).size || ids.some(id=>!activePlayers(t).some(p=>p.id===id)) || ids.length>40 || action.groups.some(g=>g.length>40 || g.length<1)) fail('Выберите от 1 до 40 разных участников из активного состава; игрок может участвовать только в одном финале.');
-      let offset=0;t.finals=action.groups.map((players,i)=>{const game={id:`f${i}`,players,positionOffset:offset,scores:null,places:null};offset+=players.length;return game;});break;
+      let offset=0;t.finals=action.groups.map((players,i)=>{const game={id:`f${i}`,players,positionOffset:offset,placesMode:'auto',scores:null,places:null};offset+=players.length;return game;});break;
     }
     case 'finalResults': {
       const g=t.finals.find(g=>g.id===action.game);if(!g) fail('Финал не найден.');
       if(g.scores && !action.confirm) fail('Подтвердите замену результата финала.');
-      if(!Array.isArray(action.scores)||!Array.isArray(action.places)||action.scores.length!==g.players.length||action.places.length!==g.players.length) fail('Заполните счёт и места всех игроков.');
-      const limit=finalPlaceLimit(g);if(action.places.some(p=>!Number.isInteger(p)||p<1||p>limit)) fail(`Место в финале — целое число от 1 до ${limit}.`);
-      g.scores=action.scores.map(scoreValue);g.places=action.places;break;
+      if(!Array.isArray(action.scores)||action.scores.length!==g.players.length) fail('Заполните счёт всех игроков финала.');
+      const scores=action.scores.map(scoreValue),places=finalPlaces({...g,scores});
+      eventDetails.previousScores=clone(g.scores);eventDetails.previousPlaces=clone(g.places);eventDetails.previousPlacesMode=g.placesMode??'manual';eventDetails.places=[...places];eventDetails.placesMode='auto';
+      g.scores=scores;g.places=places;g.placesMode='auto';break;
     }
     case 'finish': if(!t.finals.length||t.finals.some(g=>!g.places)) fail('Заполните результаты финалов.');t.finished=true;break;
     case 'reopen': t.finished=false;break;

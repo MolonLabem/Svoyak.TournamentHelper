@@ -62,13 +62,13 @@ test('manual swap preserves every player once and locks after scoring',()=>{
  let t=applyAction(make(8),{type:'draw'},2);const [a,b]=t.rounds[0].games.map(g=>g.players[0]);t=applyAction(t,{type:'swap',a,b});assert.equal(t.rounds[0].games[0].players[0],b);
  assert.equal(new Set(t.rounds[0].games.flatMap(g=>g.players)).size,8);t=complete(t);assert.throws(()=>applyAction(t,{type:'swap',a,b}));
 });
-test('three rounds, manual finals and final numeric ordering',()=>{
+test('three rounds, score-derived finals and final numeric ordering',()=>{
  let t=make(8);for(let i=0;i<3;i++)t=complete(applyAction(t,{type:'draw'},1));assert.throws(()=>applyAction(t,{type:'draw'}),/Три/);
  t=applyAction(t,{type:'finals',groups:[['p1','p2','p3','p4'],['p5','p6','p7','p8']]});
  assert.throws(()=>applyAction(t,{type:'finish'}));
  t=applyAction(t,{type:'finalResults',game:'f0',scores:[10,20,30,40],places:[4,3,2,1]});
  t=applyAction(t,{type:'finalResults',game:'f1',scores:[50,60,70,80],places:[1,2,3,4]});
- const rows=standings(t);assert.equal(rows[0].id,'p4');assert.equal(rows.find(p=>p.id==='p5').final,5);
+ const rows=standings(t);assert.equal(rows[0].id,'p4');assert.equal(rows.find(p=>p.id==='p8').final,5);
  t=applyAction(t,{type:'finish'});assert.ok(t.finished);assert.throws(()=>applyAction(t,{type:'results',round:3,game:'r3g1',scores:[1,2,3,4],confirm:true}));
  t=applyAction(t,{type:'archive'});assert.ok(t.archived);assert.throws(()=>applyAction(t,{type:'reopen'}));t=applyAction(t,{type:'archive'});t=applyAction(t,{type:'reopen'});assert.ok(!t.finished);
 });

@@ -1,5 +1,5 @@
 import {randomCapability,managementDigest,ownerCookie,ownerSession,newOwnerSession,canManage,bindSession,validManagementKey,ownerTournament,spectatorTournament} from './access.mjs';
-import {createTournament,applyAction,DomainError,groupSizes,roundComplete,gameResult,finalPlaceLimit} from './domain.mjs';
+import {createTournament,applyAction,DomainError,groupSizes,roundComplete,gameResult,finalPlaceLimit,finalPlaces} from './domain.mjs';
 import {assets} from './assets.mjs';
 export const json=(data,status=200,extraHeaders={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...extraHeaders}});
 const bad=message=>{throw new DomainError(message);};
@@ -39,8 +39,10 @@ export function validateBackup(input) {
     if(flexible&&g.positionOffset!==finalOffset)bad('Некорректный порядок мест финалов.');finalOffset+=g.players.length;if(finalOffset>40)bad('В финалах может участвовать не больше 40 игроков.');
     for(const id of g.players){if(!ids.has(id)||finalistIds.has(id))bad('Некорректный участник финала.');finalistIds.add(id);}
     if(g.scores!==null&&(!Array.isArray(g.scores)||g.scores.length!==g.players.length||g.scores.some(s=>!Number.isInteger(s)||Math.abs(s)>99999999)))bad('Некорректный счёт финала.');
-    if(g.places!==null&&(!Array.isArray(g.places)||g.places.length!==g.players.length||g.places.some(p=>!Number.isInteger(p)||p<1||p>finalPlaceLimit(g))||!g.scores))bad('Некорректные места финала.');
-    return {id:g.id,players:[...g.players],...(flexible?{positionOffset:g.positionOffset}:{}),scores:g.scores?[...g.scores]:null,places:g.places?[...g.places]:null};
+    if(g.placesMode!==undefined&&g.placesMode!=='auto')bad('Некорректный способ расчёта мест.');
+    if(g.placesMode==='auto'&&JSON.stringify(g.places)!==JSON.stringify(finalPlaces(g)))bad('Места финала не соответствуют счёту.');
+    if(g.places!==null&&(!Array.isArray(g.places)||g.places.length!==g.players.length||g.places.some(p=>!Number.isFinite(p)||p<1||p>finalPlaceLimit(g)||(g.placesMode!=='auto'&&!Number.isInteger(p)))||!g.scores))bad('Некорректные места финала.');
+    return {id:g.id,players:[...g.players],...(flexible?{positionOffset:g.positionOffset}:{}),...(g.placesMode==='auto'?{placesMode:'auto'}:{}),scores:g.scores?[...g.scores]:null,places:g.places?[...g.places]:null};
   });
   fresh.finished=t.finished===true;fresh.archived=t.archived===true;
   if(fresh.finished&&(!fresh.finals.length||fresh.finals.some(g=>!g.places)))bad('Завершённый турнир должен иметь результаты финалов.');
@@ -52,7 +54,7 @@ export function validateBackup(input) {
     const d=h.details;
     if(h.type==='register'&&(!Array.isArray(d.names)||d.names.some(n=>typeof n!=='string'||n.length>100)))bad('Повреждён журнал регистрации.');
     if(['results','finalResults'].includes(h.type)&&(!Array.isArray(d.scores)||d.scores.some(s=>!['number','string'].includes(typeof s))))bad('Повреждён журнал результатов.');
-    if(h.type==='finalResults'&&(!Array.isArray(d.places)||d.places.some(p=>!Number.isInteger(p))))bad('Повреждён журнал финалов.');
+    if(h.type==='finalResults'&&(!Array.isArray(d.places)||d.places.some(p=>!Number.isFinite(p)||p<1||p>40||(d.placesMode==='auto'?!Number.isInteger(p*2):!Number.isInteger(p)))))bad('Повреждён журнал финалов.');
     return {at:h.at,type:h.type,details:JSON.parse(JSON.stringify(d))};
   });
   fresh.history.push({at:new Date().toISOString(),type:'settings',details:{type:'settings',restored:true}});
@@ -125,7 +127,7 @@ export async function handleApi(request,env){
  if(match&&!match[2]){
   if(!Number.isInteger(body.revision)||body.revision!==row.revision)return json({error:'Турнир изменён в другой вкладке.'},409);
   if(!body.action||typeof body.action.type!=='string')bad('Некорректное действие.');
-  const actionFields={register:['names'],amendRoster:['names','removeIds','restoreIds','scope','confirm'],rename:['id','name'],remove:['id'],draw:[],reshuffle:['round','confirm'],results:['round','game','scores','confirm','resetFollowing'],swap:['a','b','round','confirm'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','places','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location','scoreDivisor','confirm']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
+  const actionFields={register:['names'],amendRoster:['names','removeIds','restoreIds','scope','confirm'],rename:['id','name'],remove:['id'],draw:[],reshuffle:['round','confirm'],results:['round','game','scores','confirm','resetFollowing'],swap:['a','b','round','confirm'],rollback:['keep','confirm'],finals:['groups'],finalResults:['game','scores','confirm'],finish:[],reopen:[],archive:[],settings:['name','date','location','scoreDivisor','confirm']};const fields=actionFields[body.action.type];if(!fields)bad('Неизвестное действие.');const action=Object.fromEntries(['type',...fields].filter(key=>Object.hasOwn(body.action,key)).map(key=>[key,body.action[key]]));
   const t=applyAction(JSON.parse(row.payload),action,crypto.getRandomValues(new Uint32Array(1))[0]);
   const result=await env.DB.prepare('UPDATE tournaments SET payload=?,revision=?,updated_at=? WHERE id=? AND revision=?').bind(JSON.stringify(t),t.revision,new Date().toISOString(),t.id,row.revision).run();
   if(result.meta.changes!==1)return json({error:'Турнир изменён в другой вкладке.'},409);

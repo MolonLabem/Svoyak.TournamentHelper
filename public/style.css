@@ -29,3 +29,5 @@ select{color-scheme:inherit;accent-color:var(--accent)}select option,select optg
 @media(max-width:480px){.round-tabs{margin-bottom:12px}.game-toolbar{margin-bottom:12px}}
 
 .game-finals .final-range{margin:0;padding:0 22px 6px;font-size:12px}@media(max-width:480px){.game-finals .final-range{padding:0 14px 6px;font-size:11px}}
+
+.game-finals .legacy-final-note{margin:0;padding:0 22px 8px;font-size:11px}@media(max-width:480px){.game-finals .legacy-final-note{padding:0 14px 8px}}

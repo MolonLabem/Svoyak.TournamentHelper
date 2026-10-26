@@ -35,7 +35,7 @@ try{
  for(let i=4;i<8;i++)await page.locator('#modal .final-assignment-row select').nth(i).selectOption('small');await confirm();
  for(let game=0;game<2;game++){
   const form=page.locator(`form[data-game="f${game}"]`);
-  for(let i=0;i<4;i++){await form.locator(`input[name="score${i}"]`).fill(String(1000-i*100));await form.locator(`select[name="place${i}"]`).selectOption(String(i+1));}
+  for(let i=0;i<4;i++){await form.locator(`input[name="score${i}"]`).fill(String(1000-i*100));}
   await form.locator('button').click();await page.waitForFunction(id=>document.querySelector(`form[data-game="${id}"] .pill`)?.textContent.includes('Готово'),`f${game}`);
  }
  await page.locator('button[data-action="finish"]').click();await confirm();await selectView('standings');
