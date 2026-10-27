@@ -139,7 +139,43 @@ function tournamentsView(){const active=tournaments.filter(t=>!t.archived),archi
 function tournamentItems(list){return list.map(t=>`<article class="tournament-item"><div class="tournament-item-info"><h3>${esc(t.name)}</h3><p>${t.date?esc(dateLabel(t.date))+' · ':''}${t.finished?'Завершён':t.finals.length?'Финалы':t.rounds.length?'Круг '+t.rounds.length:'Игроки: '+activePlayers(t).length}</p></div><div class="tournament-item-actions"><button data-open="${t.id}" class="${!t.finished&&!t.archived?'primary':''}">${!t.archived&&!t.finished?'Продолжить':'Результаты'}${icon('arrow')}</button>${t.canEdit?`<button class="delete-icon" data-delete-tournament="${t.id}" aria-label="Удалить турнир «${esc(t.name)}»" title="Удалить турнир">${icon('close')}</button>`:''}</div></article>`).join('');}
 let modalOnCancel=null,modalReturnFocus=null;
 function closeModal(saved=false){if(modalPending&&!saved)return;const d=$('#modal');if(d.open){if(!saved)modalOnCancel?.();disposeResultShare();d.close();}modalOnCancel=null;}
-function modal(title,body,handler,{onCancel=null}={}){const d=$('#modal');if(modalPending)return;disposeResultShare();modalOnCancel=onCancel;modalReturnFocus=document.activeElement;d.innerHTML=`<div class="modal-head"><h2 id="modal-title">${title}</h2><button type="button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${body}</div>`;d.setAttribute('aria-labelledby','modal-title');if(!d.open)d.showModal();if(handler)d.querySelector('form').onsubmit=async e=>{e.preventDefault();if(modalPending)return;modalPending=true;const buttons=[...d.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const b=e.submitter;const label=b?.innerHTML;if(b)b.textContent='Сохраняем…';try{await handler(new FormData(e.target),e.target);}catch(err){d.querySelector('.modal-error').textContent=err.message;}finally{modalPending=false;buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});if(b?.isConnected&&label)b.innerHTML=label;}};queueMicrotask(()=>(d.querySelector('input:not([type="hidden"]),textarea,select')??d.querySelector('.actions button[type="button"]')??d.querySelector('button'))?.focus());}
+function modal(title,body,handler,{onCancel=null}={}){
+ const d=$('#modal');if(modalPending)return;
+ disposeResultShare();modalOnCancel=onCancel;modalReturnFocus=document.activeElement;
+ const reviewed={id:current.id,revision:current.revision};
+ d.innerHTML=`<div class="modal-head"><h2 id="modal-title">${title}</h2><button type="button" data-action="close" aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${body}</div>`;
+ d.setAttribute('aria-labelledby','modal-title');if(!d.open)d.showModal();
+ if(handler){
+  const form=d.querySelector('form');
+  const stale=()=>reviewed.id!==current.id||reviewed.revision!==current.revision;
+  const invalidate=()=>{
+   form.dataset.stale='true';
+   const error=form.querySelector('.modal-error');
+   const instruction='Закройте окно и откройте действие заново, чтобы проверить свежие данные.';
+   if(error){if(!error.textContent.includes(instruction))error.textContent+=(error.textContent?' ':'')+instruction;error.tabIndex=-1;error.focus();}
+   form.querySelectorAll('button[type="submit"]').forEach(button=>button.disabled=true);
+   if(!modalReturnFocus?.isConnected)modalReturnFocus=$('#main-content');
+  };
+  form.onsubmit=async e=>{
+   e.preventDefault();if(modalPending||form.dataset.stale==='true')return;
+   if(stale()){invalidate();return;}
+   modalPending=true;const buttons=[...d.querySelectorAll('button')];buttons.forEach(button=>button.disabled=true);
+   const button=e.submitter,label=button?.innerHTML;if(button)button.textContent='Сохраняем…';
+   try{await handler(new FormData(form),form);}
+   catch(error){form.querySelector('.modal-error').textContent=error.message;}
+   finally{
+    modalPending=false;
+    // A conflict reload may replace the lineup while this confirmation stays open.
+    // Keep its captured action unusable even for Enter or repeated requestSubmit().
+    const invalid=d.open&&d.querySelector('form')===form&&stale();
+    buttons.forEach(button=>{if(button.isConnected)button.disabled=invalid&&button.type==='submit';});
+    if(button?.isConnected&&label)button.innerHTML=label;
+    if(invalid)invalidate();
+   }
+  };
+ }
+ queueMicrotask(()=>(d.querySelector('input:not([type="hidden"]),textarea,select')??d.querySelector('.actions button[type="button"]')??d.querySelector('button'))?.focus());
+}
 const modalButtons=(label='Сохранить',danger=false)=>`<div class="modal-error" role="alert"></div><div class="actions"><button type="button" data-action="close">Отмена</button><button class="${danger?'danger':'primary'}" type="submit">${label}</button></div>`;
 function confirmModal(title,text,onConfirm,{label='Подтвердить',onCancel=null}={}){modal(title,`<form><p>${text}</p>${modalButtons(label,true)}</form>`,async()=>{const result=await onConfirm();if(result!==false)closeModal(true);},{onCancel});}
 function registrationModal(prefill=''){modal('Добавить участников',`<form><p>Введите имена по одному в строке. Имена должны быть уникальными; пробелы в начале и конце убираются.</p><button type="button" class="ghost import-player-list" data-action="import-csv">${icon('folder')}Загрузить список из файла</button><label class="field">Имена игроков<textarea name="names" rows="9" required placeholder="Александр Волков&#10;Мария Соколова&#10;Дмитрий Орлов">${esc(prefill)}</textarea><span class="field-hint" id="registration-count" aria-live="polite">Доступно мест: ${40-activePlayers(current).length}</span></label>${modalButtons('Добавить игроков')}</form>`,async fd=>await mutate({type:'register',names:fd.get('names').split(/\r?\n/).filter(s=>s.trim())},{message:'Участники добавлены'}));}
