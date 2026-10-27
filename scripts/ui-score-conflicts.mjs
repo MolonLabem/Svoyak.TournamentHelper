@@ -105,4 +105,3 @@ finally{
  console.log(JSON.stringify({passed:success,checks:checks.length,syntheticRecordsCleaned:cleaned,browserErrors:errors.length}));
 }
 if(!success)process.exitCode=1;
-
