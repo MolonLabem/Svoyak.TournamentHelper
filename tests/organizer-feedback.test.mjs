@@ -59,7 +59,7 @@ test('backup validation rejects tampered per-round rosters and preserves arbitra
  const bad=structuredClone(t);bad.rounds[0].roster.pop();assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:bad}));const bad2=structuredClone(t);bad2.players[0].active='false';assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:bad2}));
 });
 test('export example is exactly one six-row A:D block; custom divisors never rewrite raw export scores',()=>{
- const text=readFileSync(new URL('../public/export-example.tsv',import.meta.url),'utf8').replace(/\n$/,'');const rows=text.split('\n').map(line=>line.split('\t'));assert.equal(rows.length,6);assert.ok(rows.every(row=>row.length===4));assert.equal(rows[1][3],'1000');assert.equal(rows[4][3],'0');assert.ok(rows[1][2].startsWith('Пример'));
+ const text=readFileSync(new URL('../public/export-example.tsv',import.meta.url),'utf8').replace(/\r\n?/g,'\n').replace(/\n$/,'');const rows=text.split('\n').map(line=>line.split('\t'));assert.equal(rows.length,6);assert.ok(rows.every(row=>row.length===4));assert.equal(rows[1][3],'1000');assert.equal(rows[4][3],'0');assert.ok(rows[1][2].startsWith('Пример'));
  let t=complete(draw(make(4,200)));const raw=ratingTSV(t);t=applyAction(t,{type:'settings',name:t.name,date:t.date,scoreDivisor:333});assert.equal(ratingTSV(t),raw);
 });
 test('new owner operations are persisted and projected safely, and viewers cannot perform them',async()=>{

@@ -1,11 +1,13 @@
 import {readFile,writeFile,mkdir,rm,cp} from 'node:fs/promises';
-const root=new URL('../',import.meta.url);process.chdir(root.pathname);
+import {fileURLToPath} from 'node:url';
+const root=new URL('../',import.meta.url);process.chdir(fileURLToPath(root));
+const readModule=async file=>(await readFile(file,'utf8')).replace(/\r\n?/g,'\n');
 const assets={};
 for(const [path,file,type] of [['/','public/index.html','text/html; charset=utf-8'],['/logo.svg','public/logo.svg','image/svg+xml'],['/export-example.tsv','public/export-example.tsv','text/tab-separated-values; charset=utf-8'],['/style.css','public/style.css','text/css; charset=utf-8'],['/app.mjs','public/app.mjs','text/javascript; charset=utf-8'],['/theme.js','public/theme.js','text/javascript; charset=utf-8'],['/domain.mjs','src/domain.mjs','text/javascript; charset=utf-8'],['/sheet-export.mjs','src/sheet-export.mjs','text/javascript; charset=utf-8'],['/result-card.mjs','src/result-card.mjs','text/javascript; charset=utf-8'],['/result-image.mjs','public/result-image.mjs','text/javascript; charset=utf-8'],['/players.json','public/players.json','application/json; charset=utf-8'],['/README.md','README.md','text/plain; charset=utf-8'],['/docs/WORKBOOK_ANALYSIS.md','docs/WORKBOOK_ANALYSIS.md','text/plain; charset=utf-8'],['/LICENSE','LICENSE','text/plain; charset=utf-8'],['/NOTICE','NOTICE','text/plain; charset=utf-8'],['/docs/VERIFICATION.md','docs/VERIFICATION.md','text/plain; charset=utf-8'],['/docs/UI_WORKFLOW_REVIEW.md','docs/UI_WORKFLOW_REVIEW.md','text/plain; charset=utf-8']])assets[path]={body:await readFile(file,'utf8'),type};
 await rm('dist',{recursive:true,force:true});await mkdir('dist/server',{recursive:true});await mkdir('dist/.openai',{recursive:true});
-let access=(await readFile('src/access.mjs','utf8')).replace(/^import .*\n/gm,'').replace(/export /g,'');
-let domain=await readFile('src/domain.mjs','utf8');domain=domain.replace(/export /g,'');
-let worker=await readFile('src/worker.mjs','utf8');worker=worker.replace(/^import .*\n/gm,'').replace(/export (const|function|async function) /g,'$1 ');
+let access=(await readModule('src/access.mjs')).replace(/^import .*\n/gm,'').replace(/export /g,'');
+let domain=await readModule('src/domain.mjs');domain=domain.replace(/export /g,'');
+let worker=await readModule('src/worker.mjs');worker=worker.replace(/^import .*\n/gm,'').replace(/export (const|function|async function) /g,'$1 ');
 await writeFile('dist/server/index.js',`const assets=${JSON.stringify(assets)};\n${domain}\n${access}\n${worker}`);
 await cp('.openai/hosting.json','dist/.openai/hosting.json');
 await cp('drizzle','dist/drizzle',{recursive:true});
