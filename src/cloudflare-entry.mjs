@@ -1,13 +1,10 @@
 import app from './worker.mjs';
-import {authorizeMigration,migrationBridge} from './migration-bridge.mjs';
 
 // Only the standalone Cloudflare deployment uses this entry point. Keep Sites
 // available until its complete database has been copied and verified.
 export default {
   async fetch(request, env, ctx) {
-    if(new URL(request.url).pathname.startsWith('/__migration/'))return migrationBridge(request,env,'target');
     if (env.SVOYAK_MIGRATION_STATUS === 'ready') return app.fetch(request, env, ctx);
-    if(env.SVOYAK_MIGRATION_STATUS==='pending'&&await authorizeMigration(request,env))return app.fetch(request,env,ctx);
 
     const api = new URL(request.url).pathname.startsWith('/api/');
     const message = 'Перенос ещё не завершён. Турниры пока доступны на прежнем сайте.';
