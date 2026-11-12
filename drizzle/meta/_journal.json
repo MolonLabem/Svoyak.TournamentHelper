@@ -15,6 +15,13 @@
       "when": 1793019600000,
       "tag": "0001_tournament_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794481200000,
+      "tag": "0002_migration_export_view",
+      "breakpoints": true
     }
   ]
 }
