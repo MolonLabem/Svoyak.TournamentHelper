@@ -12,8 +12,8 @@ test('Cloudflare blocks reads and writes until the migration is explicitly ready
       assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
       assert.equal(response.headers.get('set-cookie'), null);
       if (method === 'HEAD') assert.equal(await response.text(), '');
-      else if (path.startsWith('/api/')) assert.match((await response.json()).error, /Перенос ещё не завершён/);
-      else assert.match(await response.text(), /https:\/\/svoyak\.sardarka-300\.chatgpt\.site/);
+      else if (path.startsWith('/api/')) assert.match((await response.json()).error, /Турниры временно недоступны/);
+      else {const body=await response.text();assert.match(body,/Прежний адрес больше не принимает изменения/);assert.doesNotMatch(body,/href=/);}
     }
   }
 });

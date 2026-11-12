@@ -3,7 +3,7 @@
   "compatibility_date": "2026-11-12",
   "bindings": [
     {"type": "d1", "name": "DB", "database_id": "ee28574f-585d-4213-a594-ab49a468feac"},
-    {"type": "plain_text", "name": "SVOYAK_MIGRATION_STATUS", "text": "pending"}
+    {"type": "plain_text", "name": "SVOYAK_MIGRATION_STATUS", "text": "ready"}
   ],
   "observability": {
     "enabled": true,
