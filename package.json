@@ -6,6 +6,7 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:cloudflare": "node scripts/build.mjs && node scripts/package-cloudflare.mjs",
     "test": "node scripts/build.mjs && node --test --test-isolation=none tests/*.test.mjs",
     "dev": "node scripts/dev.mjs"
   },
