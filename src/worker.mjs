@@ -1,4 +1,4 @@
-import {randomCapability,managementDigest,ownerCookie,ownerSession,newOwnerSession,canManage,bindSession,validManagementKey,ownerTournament,spectatorTournament} from './access.mjs';
+import {randomCapability,managementDigest,ownerCookie,ownerSession,newOwnerSession,canManage,bindSession,bindRecoverySession,validManagementKey,ownerTournament,spectatorTournament} from './access.mjs';
 import {createTournament,applyAction,DomainError,groupSizes,roundComplete,gameResult,finalPlaceLimit,finalPlaces,validateChairCount} from './domain.mjs';
 import {assets} from './assets.mjs';
 export const json=(data,status=200,extraHeaders={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...extraHeaders}});
@@ -19,7 +19,10 @@ export function validateBackup(input) {
     if(!r||typeof r!=='object')bad('Некорректный круг в резервной копии.');
     const explicit=r?.roster!==undefined,roster=explicit?r.roster:fresh.players.map(p=>p.id),custom=r?.customGroups===true;
     if(r?.customGroups!==undefined&&typeof r.customGroups!=='boolean')bad('Некорректный режим размеров боёв.');
-    if(!Array.isArray(roster)||roster.length<(custom?2:3)||roster.length>40||new Set(roster).size!==roster.length||roster.some(id=>!ids.has(id)))bad('Некорректный состав круга.');
+    // Withdrawals can leave just one or two forced absences, without a game.
+    // The checks below still require every roster ID to be covered by a miss.
+    const allSkipped=explicit&&Array.isArray(r.games)&&r.games.length===0;
+    if(!Array.isArray(roster)||roster.length<(allSkipped?1:custom?2:3)||roster.length>40||new Set(roster).size!==roster.length||roster.some(id=>!ids.has(id)))bad('Некорректный состав круга.');
     const sizes=explicit?null:groupSizes(roster.length),rosterIds=new Set(roster),missed=r.missed??[];
     if(!Array.isArray(missed)||new Set(missed).size!==missed.length||missed.some(id=>!rosterIds.has(id)))bad('Некорректные отметки пропуска.');
     if(r?.number!==i+1||!Array.isArray(r.games)||(!r.games.length&&missed.length!==roster.length)||(!explicit&&r.games.length!==sizes.length))bad('Некорректная сетка круга.');
@@ -99,7 +102,8 @@ export async function handleApi(request,env){
  if(ownershipFields(body)||ownershipFields(body?.action)||ownershipFields(body?.tournament))return json({error:'Доступ определяется защищённой сессией, а не полями запроса.'},400);
  if(match?.[2]==='recover'){
   if(!await validManagementKey(row,match[1],body.key))return json({error:'Приватная ссылка управления недействительна.'},403);
-  const next=session??await newOwnerSession();await bindSession(env,match[1],next).run();
+  const next=session??await newOwnerSession(),binding=await bindRecoverySession(env,match[1],next,row.management_key_hash).run();
+  if(binding.meta.changes!==1)return json({error:'Приватная ссылка управления недействительна.'},403);
   return json(ownerTournament(JSON.parse(row.payload)),200,{'Set-Cookie':ownerCookie(next.token,env)});
  }
  if(path==='/api/tournaments'||path==='/api/restore'){
