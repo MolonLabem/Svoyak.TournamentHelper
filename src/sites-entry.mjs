@@ -1,6 +1,6 @@
 import {redirectBrowser} from './sites-redirect.mjs';
 
-const destination='https://svoyak.sardarka-300.workers.dev';
+const destination='https://svoyak-tournament.pages.dev';
 const redirectScript=`(${redirectBrowser.toString()})();`;
 const headers={
   'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer', 'X-Content-Type-Options':'nosniff',
@@ -24,7 +24,7 @@ export default {
 <p id="recovery-note" hidden>Вы открыли приватную ссылку. Она уже убрана из адресной строки. Продолжайте только на своём устройстве: на новом сайте потребуется подтвердить восстановление управления.</p>
 <button id="continue-management" type="button" hidden>Перейти и восстановить управление</button>
 <p><a id="public-destination" href="${destination+route}" rel="noreferrer">Открыть турнир на новом сайте</a></p>
-<noscript><p>Для восстановления управления включите JavaScript или замените только адрес сайта в сохранённой приватной ссылке на svoyak.sardarka-300.workers.dev.</p></noscript>
+<noscript><p>Для восстановления управления включите JavaScript или замените только адрес сайта в сохранённой приватной ссылке на svoyak-tournament.pages.dev.</p></noscript>
 </main></body></html>`;
     return new Response(request.method==='HEAD'?null:html,{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
   }

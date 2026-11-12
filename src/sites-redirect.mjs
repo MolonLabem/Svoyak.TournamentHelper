@@ -1,5 +1,5 @@
 export function redirectBrowser(){
-const destination='https://svoyak.sardarka-300.workers.dev';
+const destination='https://svoyak-tournament.pages.dev';
 const path=/^\/t\/[a-zA-Z0-9-]{1,100}$/.test(location.pathname)?location.pathname:'/';
 let managementKey=path!=='/'?location.hash.match(/^#manage=([A-Za-z0-9_-]{43})$/)?.[1]:null;
 // Keep the capability only in transient memory. Never forward it automatically.

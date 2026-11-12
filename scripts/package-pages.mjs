@@ -1,0 +1,14 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+const root=new URL('../',import.meta.url),output=new URL('dist/pages/',root);
+const read=async path=>(await readFile(new URL(path,root),'utf8')).replace(/\r\n?/g,'\n');
+const wrap=code=>code.replace(/^import .*\n/gm,'').replace('export default ','return ');
+const application=wrap(await read('dist/server/index.js'));
+const gate=wrap(await read('src/cloudflare-entry.mjs'));
+const redirect=(await read('src/sites-redirect.mjs')).replace('export function ','function ');
+const transition=wrap(await read('src/sites-entry.mjs'));
+const entry=(await read('src/pages-entry.mjs')).replace(/^import .*\n/gm,'');
+const bundle=`const application=(()=>{${application}})();\nconst app=((app)=>{${gate}})(application);\nconst transition=(()=>{${redirect}\n${transition}})();\n${entry}`;
+await mkdir(output,{recursive:true});
+await writeFile(new URL('_worker.js',output),bundle);
+await writeFile(new URL('_routes.json',output),JSON.stringify({version:1,include:['/*'],exclude:[]})+'\n');
+console.log('Packaged Pages module with embedded assets; no database migrations.');

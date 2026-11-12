@@ -1,0 +1,19 @@
+{
+  "name": "svoyak-tournament",
+  "production_branch": "master",
+  "deployment_configs": {
+    "production": {
+      "compatibility_date": "2026-11-12",
+      "compatibility_flags": [],
+      "fail_open": false,
+      "env_vars": {"SVOYAK_MIGRATION_STATUS": {"type": "plain_text", "value": "ready"}},
+      "d1_databases": {"DB": {"id": "ee28574f-585d-4213-a594-ab49a468feac"}}
+    },
+    "preview": {
+      "compatibility_date": "2026-11-12",
+      "fail_open": false,
+      "env_vars": {"SVOYAK_MIGRATION_STATUS": {"type": "plain_text", "value": "pending"}},
+      "d1_databases": {}
+    }
+  }
+}

@@ -14,7 +14,7 @@ test('old source serves transition without D1 or cookies; every API/write/export
   if(method==='HEAD')assert.equal(await response.text(),'');
  }
  const html=await(await source.fetch(new Request('https://old.invalid/t/synthetic'))).text();
- assert.match(html,/href="https:\/\/svoyak\.sardarka-300\.workers\.dev\/t\/synthetic"/);
+ assert.match(html,/href="https:\/\/svoyak-tournament\.pages\.dev\/t\/synthetic"/);
  const script=await(await source.fetch(new Request('https://old.invalid/migration-redirect.mjs'))).text();assert.match(script,/history.replaceState/);
 });
 
@@ -36,12 +36,12 @@ test('old private fragment is cleared and only an explicit click forwards it to 
  assert.deepEqual(page.history,['/t/synthetic']);assert.equal(page.navigations.length,0);
  const link=page.elements.get('#public-destination');assert.ok(!link.href.includes(key));
  const button=page.elements.get('#continue-management');assert.equal(button.hidden,false);button.listeners.click();
- assert.ok(page.navigations[0]==='https://svoyak.sardarka-300.workers.dev/t/synthetic#manage='+key);
+ assert.ok(page.navigations[0]==='https://svoyak-tournament.pages.dev/t/synthetic#manage='+key);
 });
 test('invalid fragments and foreign-looking paths cannot forward a capability or choose a host',()=>{
  for(const [hash,path] of [['#manage=invalid','/t/synthetic'],['#manage='+'a'.repeat(43),'//evil.invalid'],['#/standings','/t/synthetic']]){
   const page=visit(hash,path);assert.equal(page.navigations.length,0);assert.equal(page.elements.has('#continue-management'),false);
-  const link=page.elements.get('#public-destination');assert.ok(link.href.startsWith('https://svoyak.sardarka-300.workers.dev/'));assert.ok(!link.href.includes('manage'));
+  const link=page.elements.get('#public-destination');assert.ok(link.href.startsWith('https://svoyak-tournament.pages.dev/'));assert.ok(!link.href.includes('manage'));
  }
 });
 test('source archive rejects writes from old deployments without modifying any existing fields',()=>{
