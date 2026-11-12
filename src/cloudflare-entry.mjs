@@ -1,18 +1,18 @@
 import app from './worker.mjs';
 
-// Only the standalone Cloudflare deployment uses this entry point. Keep Sites
-// available until its complete database has been copied and verified.
+// Only an explicitly ready standalone deployment can read or write tournaments.
+// The old Sites database is now a frozen archive, not a writable fallback.
 export default {
   async fetch(request, env, ctx) {
     if (env.SVOYAK_MIGRATION_STATUS === 'ready') return app.fetch(request, env, ctx);
 
     const api = new URL(request.url).pathname.startsWith('/api/');
-    const message = 'Перенос ещё не завершён. Турниры пока доступны на прежнем сайте.';
+    const message = 'Турниры временно недоступны. Выполняется проверка данных; попробуйте позже.';
     const body = api ? JSON.stringify({error: message}) : `<!doctype html>
 <html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Своя игра · Перенос сайта</title>
-<main><h1>Перенос ещё не завершён</h1><p>Продолжайте работу с турнирами на прежнем сайте.</p>
-<p><a href="https://svoyak.sardarka-300.chatgpt.site" rel="noreferrer">Открыть работающий сайт</a></p></main></html>`;
+<title>Своя игра · Проверка данных</title>
+<main><h1>Турниры временно недоступны</h1><p>Выполняется проверка данных. Сохранение временно остановлено; попробуйте позже.</p>
+<p>Прежний адрес больше не принимает изменения.</p></main></html>`;
     return new Response(request.method === 'HEAD' ? null : body, {
       status: 503,
       headers: {
