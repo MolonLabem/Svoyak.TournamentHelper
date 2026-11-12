@@ -1,0 +1,14 @@
+{
+  "main_module": "cloudflare-entry.mjs",
+  "compatibility_date": "2026-11-12",
+  "bindings": [
+    {"type": "d1", "name": "DB", "database_id": "ee28574f-585d-4213-a594-ab49a468feac"},
+    {"type": "plain_text", "name": "SVOYAK_MIGRATION_STATUS", "text": "pending"}
+  ],
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {"enabled": true, "invocation_logs": true, "head_sampling_rate": 1},
+    "traces": {"enabled": true, "head_sampling_rate": 0.1}
+  }
+}
