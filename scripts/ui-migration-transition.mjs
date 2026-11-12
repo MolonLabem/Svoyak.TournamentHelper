@@ -6,7 +6,7 @@ import app from '../src/worker.mjs';
 import source from '../src/sites-entry.mjs';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const store=database();const owner=new Client(store.env);const fixture=await owner.create('Synthetic link transition');
-const target='https://svoyak.sardarka-300.workers.dev';const old='https://source.invalid';
+const target='https://svoyak-tournament.pages.dev';const old='https://source.invalid';
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox']});
 const context=await browser.newContext();let targetRequests=0,recoverPosts=0;const errors=[];
 try{

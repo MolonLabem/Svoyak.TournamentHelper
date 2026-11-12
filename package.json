@@ -7,6 +7,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:sites": "node scripts/build.mjs && node scripts/package-sites.mjs",
+    "build:pages": "node scripts/build.mjs && node scripts/package-pages.mjs",
     "build:cloudflare": "node scripts/build.mjs && node scripts/package-cloudflare.mjs",
     "test": "node scripts/build.mjs && node --test --test-isolation=none tests/*.test.mjs",
     "dev": "node scripts/dev.mjs"
