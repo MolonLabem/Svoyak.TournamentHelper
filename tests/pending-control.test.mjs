@@ -28,6 +28,24 @@ test('played players cannot be marked absent; invalid sizes/unknown skips are re
 test('all-player skips can complete a round without fake games/points; redraw retains skip markers',()=>{
  const base=make(3);let t=amend(base,{missedIds:base.players.map(p=>p.id),sizes:[]});assert.equal(t.rounds[0].games.length,0);assert.ok(roundComplete(t.rounds[0]));assert.ok(reshuffleImpact(t,1).unchanged);assert.deepEqual(applyAction(t,{type:'reshuffle',round:1,confirm:true}),t);assert.deepEqual(validateBackup({format:'svoyak-v1',tournament:t}).rounds,t.rounds);assert.equal(ratingRows(t).length,0);const csv=gamesCSV(t).split('\r\n');assert.equal(csv.length,4);assert.ok(csv.slice(1).every(line=>line.endsWith(';"";"";"Вынужденно пропустил бой"')));t=applyAction(t,{type:'draw'},5);assert.equal(t.rounds[1].games[0].players.length,3);
 });
+test('one- and two-player all-skipped rounds survive backup after withdrawals without permitting byes',()=>{
+ for(const count of [1,2]){
+  const base=make(3),remaining=base.players.slice(0,count).map(p=>p.id);
+  const t=amend(base,{removeIds:base.players.slice(count).map(p=>p.id),missedIds:remaining,sizes:[]});
+  assert.deepEqual(t.rounds[0].roster,remaining);assert.equal(t.rounds[0].games.length,0);
+  assert.ok(roundComplete(t.rounds[0]));assert.ok(standings(t).every(p=>p.total===0&&p.rounds[0]===null));
+  const restored=validateBackup({format:'svoyak-v1',tournament:t});
+  assert.deepEqual(restored.rounds,t.rounds);assert.deepEqual(restored.players,t.players);
+  const empty=structuredClone(t);empty.rounds[0].roster=[];empty.rounds[0].missed=[];
+  assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:empty}),DomainError);
+  const bye=structuredClone(t);bye.rounds[0].customGroups=true;bye.rounds[0].missed=remaining.slice(1);bye.rounds[0].games=[{id:'r1g1',players:[remaining[0]],scores:[0]}];
+  assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:bye}),DomainError);
+  const uncovered=structuredClone(t);uncovered.rounds[0].missed.pop();
+  assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:uncovered}),DomainError);
+  const returned=amend(restored,{scope:'next',restoreIds:base.players.slice(count).map(p=>p.id)});
+  assert.equal(applyAction(returned,{type:'draw'},7).rounds[1].games[0].players.length,3);
+ }
+});
 test('backup validation rejects skips overlapping games, forged group markers and lost roster members',()=>{
  let t=amend(make(),{names:['Поздний'],sizes:[3,3,3],missedIds:[]});t=amend(t,{missedIds:[t.rounds[0].games[0].players[0]],sizes:[4,4]});assert.deepEqual(validateBackup({format:'svoyak-v1',tournament:t}).rounds,t.rounds);for(const change of [x=>x.rounds[0].missed.push(x.rounds[0].games[0].players[0]),x=>x.rounds[0].missed.push(x.rounds[0].missed[0]),x=>x.rounds[0].roster.pop(),x=>x.rounds[0].customGroups='true',x=>x.rounds[0]=null]){const bad=structuredClone(t);change(bad);assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:bad}),DomainError);}const two=make(2,[2]);delete two.rounds[0].customGroups;assert.throws(()=>validateBackup({format:'svoyak-v1',tournament:two}));
 });

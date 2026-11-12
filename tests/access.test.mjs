@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {database,Client} from './db-helper.mjs';
 import worker from '../src/worker.mjs';
-import {demoTournament} from '../src/domain.mjs';
+import {demoTournament,applyAction} from '../src/domain.mjs';
 import {validCapability,managementDigest} from '../src/access.mjs';
 const actions=['amendRoster','chairs','reshuffle','register','rename','remove','draw','results','swap','rollback','finals','finalResults','finish','reopen','archive','settings'];
 test('creation issues secure browser ownership and stores only hashed capabilities',async()=>{
@@ -36,6 +36,44 @@ test('cookie loss and a private recovery link restore only its bound tournament'
 });
 test('replacing a private link revokes the old capability and other browser sessions',async()=>{
  const {db,env}=database();try{const a=new Client(env),c=new Client(env),d=new Client(env),created=await a.create('Rotate app capability'),id=created.tournament.id;await c.request('/api/tournaments/'+id+'/recover',{key:created.managementKey});const response=await a.request('/api/tournaments/'+id+'/management-link',{});assert.equal(response.status,200);const next=await response.json();assert.ok(validCapability(next.managementKey));assert.ok(next.managementKey!==created.managementKey);assert.equal((await c.request('/api/tournaments/'+id,{revision:0,action:{type:'draw'}})).status,401);assert.equal((await d.request('/api/tournaments/'+id+'/recover',{key:created.managementKey})).status,403);assert.equal((await d.request('/api/tournaments/'+id+'/recover',{key:next.managementKey})).status,200);assert.equal((await(await a.request('/api/tournaments/'+id)).json()).canEdit,true);
+ }finally{db.close();}
+});
+test('recovery cannot bind a session after its checked management key is replaced',async()=>{
+ const {db,env}=database();
+ try{
+  const owner=new Client(env),recovering=new Client(env),other=new Client(env);
+  const created=await owner.create('Recovery race'),id=created.tournament.id,unrelated=await recovering.create('Unrelated tournament');
+  await other.create('Other owner');
+  let t=applyAction(created.tournament,{type:'register',names:['Тест А','Тест Б','Тест В','Тест Г','Тест Д']});
+  t=applyAction(t,{type:'draw'},17);
+  for(const g of t.rounds[0].games)t=applyAction(t,{type:'results',round:1,game:g.id,scores:g.players.map((_,i)=>[100,0,-10.25][i])});
+  db.prepare('UPDATE tournaments SET payload=?,revision=? WHERE id=?').run(JSON.stringify(t),t.revision,id);
+  const before=db.prepare('SELECT payload,revision FROM tournaments WHERE id=?').get(id);
+  const prepare=env.DB.prepare.bind(env.DB);let replacement,rotated=false;
+  env.DB.prepare=sql=>{
+   const statement=prepare(sql);
+   if(sql.startsWith('INSERT INTO tournament_owner_sessions')){
+    const run=statement.run.bind(statement);
+    statement.run=async()=>{
+     env.DB.prepare=prepare;
+     const response=await owner.request('/api/tournaments/'+id+'/management-link',{});
+     assert.equal(response.status,200);replacement=(await response.json()).managementKey;rotated=true;
+     return run();
+    };
+   }
+   return statement;
+  };
+  const response=await recovering.request('/api/tournaments/'+id+'/recover',{key:created.managementKey});
+  assert.ok(rotated);assert.equal(response.status,403);assert.equal(response.headers.has('Set-Cookie'),false);
+  assert.equal((await(await recovering.request('/api/tournaments/'+id)).json()).canEdit,false);
+  assert.equal((await recovering.request('/api/tournaments/'+id,{revision:t.revision,action:{type:'draw'}})).status,403);
+  assert.equal((await(await recovering.request('/api/tournaments/'+unrelated.tournament.id)).json()).canEdit,true);
+  assert.equal((await(await owner.request('/api/tournaments/'+id)).json()).canEdit,true);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tournament_owner_sessions WHERE tournament_id=?').get(id).n,1);
+  assert.deepEqual(db.prepare('SELECT payload,revision FROM tournaments WHERE id=?').get(id),before);
+  assert.equal((await other.request('/api/tournaments/'+id+'/recover',{key:created.managementKey})).status,403);
+  assert.equal((await recovering.request('/api/tournaments/'+id+'/recover',{key:replacement})).status,200);
+  assert.equal((await recovering.request('/api/tournaments/'+id+'/recover',{key:replacement})).status,200,'valid repeated recovery refreshes its existing binding');
  }finally{db.close();}
 });
 test('same-origin JSON, session fixation and client-supplied identity fields are enforced',async()=>{

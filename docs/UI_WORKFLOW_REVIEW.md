@@ -43,3 +43,9 @@ A final-round audit exposed Swiss ranks displayed in the first column of a final
 A missing-games filter could become inaccessible when the final score enabled the Next round button. The filter now stays available and saving the last missing game resets it to All games.
 
 A contextual Image action opens one preview/chooser, without new navigation panels. Saved rounds contain game scores plus cumulative Swiss standings; finals contain final places plus the separate Swiss table. Historical images exclude later games and newcomers, include forced skips and genuine zero/negative scores, and have no private fields. An incomplete stage is disabled. Clipboard denial has a PNG download fallback; large tables paginate. Blob resources are revoked on change/close, async work cannot reopen a closed dialog, and text tables provide an accessible alternative. Image generation requires no external service or account.
+
+## Export after another organizer tab changes results
+
+The export dialog loads a separate saved snapshot without replacing the score-entry state or its tab-local drafts. CSV/TSV actions check that snapshot again before copying or downloading. If another tab changed it, the dialog refreshes its preview, counts and large-game exclusions, focuses an explanation, and requires the user to repeat the action after reviewing the updated export. A failed check offers retry and never falls back to cached results. Closing the dialog cancels its pending UI work.
+
+Telegram text copying and pagination remain available with an unsaved score, just like PNG sharing; both use saved results. History explains that discarded-game details are retained in the private JSON backup and cannot be restored automatically.
